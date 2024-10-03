@@ -1,6 +1,6 @@
 {
   "name": "mongoose-encrypt-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "encrypt data before data document store in the database",
   "main": "index.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "type": "git",
     "url": "https://github.com/doduyphuong/mongoose-encrypt-plugin"
   },
-  "author": "Do Duy Phuong",
+  "author": "Do Duy Phuong <doduyphuong433@gmail.com>",
   "license": "ISC",
   "dependencies": {
     "lodash": "^4.17.21",
