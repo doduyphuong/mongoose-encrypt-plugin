@@ -45,7 +45,17 @@ const saveData = async (data) => {
     return null;
 }
 
-const getData = async () => {
+const getDataTest1 = async () => {
+    try {
+        return await TestModel.find().exec();
+    } catch (error) {
+        console.error('error: ', error);
+    }
+
+    return [];
+}
+
+const getDataTest2 = async () => {
     try {
         return await TestModel.find().select('name phone email address').exec();
     } catch (error) {
@@ -89,8 +99,11 @@ async function main() {
         const initData2 = await saveData(data2);
         console.log('Data insert: ', initData2);
 
-        const listData = await getData();
-        console.log('List Data: ', listData);
+        const listDataTest1 = await getDataTest1();
+        console.log('List Data Test 1: ', listDataTest1);
+
+        const listDataTest2 = await getDataTest2();
+        console.log('List Data Test 1: ', listDataTest2);
 
         const uData = await updateData(initData2._id, { name: 'Test data update', phone: '0955555555' });
         console.log('Update Data: ', uData);

@@ -122,12 +122,13 @@ const MongooseEncryptPlugin = function (schema, options) {
         let that = this;
         const { hashField, ivField, fields } = options;
         const selectField = that.projection();
+        console.log('selectField: ', selectField)
 
-        if (!selectField.hasOwnProperty(hashField)) {
+        if (selectField && !selectField?.hasOwnProperty(hashField)) {
             selectField[hashField] = 1
         }
 
-        if (!selectField.hasOwnProperty(ivField)) {
+        if (selectField && !selectField?.hasOwnProperty(ivField)) {
             selectField[ivField] = 1
         }
 
