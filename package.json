@@ -10,6 +10,10 @@
     "mongoose-encrypt-plugin",
     "mongoose-encrypt"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/doduyphuong/mongoose-encrypt-plugin"
+  },
   "author": "Do Duy Phuong",
   "license": "ISC",
   "dependencies": {
