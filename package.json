@@ -1,0 +1,22 @@
+{
+  "name": "mongoose-encrypt-plugin",
+  "version": "1.0.0",
+  "description": "encrypt data before data document store in the database",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test/index"
+  },
+  "keywords": [
+    "mongoose-encrypt-plugin",
+    "mongoose-encrypt"
+  ],
+  "author": "Do Duy Phuong",
+  "license": "ISC",
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "mongoose": "^8.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4"
+  }
+}
