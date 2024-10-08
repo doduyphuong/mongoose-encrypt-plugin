@@ -1,12 +1,13 @@
 {
   "name": "mongoose-encrypt-plugin",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "encrypt data before data document store in the database",
   "main": "index.js",
   "scripts": {
     "test": "node test/index"
   },
   "keywords": [
+    "mongoose",
     "mongoose-encrypt-plugin",
     "mongoose-encrypt"
   ],

@@ -40,11 +40,15 @@ function decryptField(dataDecrypt, salt, algorithm) {
  * @returns {Object} The merge "options" with default options
  */
 function defaultOptions(options) {
+    if (!options?.fields?.length) {
+        throw new Error(`Fields is Array and not empty`);
+    }
+
     if (options.salt.length < 32) {
         throw new Error(`Salt length greater than 32 character`);
     }
 
-    if(options.algorithm && !['aes-256-ctr', 'aes-256-cbc'].includes(options.algorithm)) {
+    if (options.algorithm && !['aes-256-ctr', 'aes-256-cbc'].includes(options.algorithm)) {
         throw new Error(`Algorithm accept 'aes-256-ctr' and 'aes-256-cbc'`);
     }
 
@@ -76,9 +80,9 @@ function defaultOptions(options) {
  * 
  * ### Options:
  * 
- * - [field]: array of strings - no default. List field need to encrypt
+ * - [fields]: array of strings - no default. List field need to encrypt
  * - [sail]: string - no default, length greater 32 character
- * - [algorithm] string - defaults to `aes-256-ctr`, accept `aes-256-ctr` and `aes-256-cbc`
+ * - [algorithm] string - defaults to `aes-256-ctr`, accept between `aes-256-ctr` and `aes-256-cbc`
  * - [hashField] string - defaults to `hashField`
  * - [ivField] string - defaults to  `ivField`
  * - [hideIV] bool - defaults to true
@@ -122,7 +126,6 @@ const MongooseEncryptPlugin = function (schema, options) {
         let that = this;
         const { hashField, ivField, fields } = options;
         const selectField = that.projection();
-        console.log('selectField: ', selectField)
 
         if (selectField && !selectField?.hasOwnProperty(hashField)) {
             selectField[hashField] = 1
