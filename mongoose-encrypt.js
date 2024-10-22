@@ -184,7 +184,8 @@ const MongooseEncryptPlugin = function (schema, options) {
             else {
                 fields.forEach(field => {
                     if (customQuery[field]) {
-                        customQuery[field] = crypto.createHash('sha256').update(customQuery[field]).digest('base64');
+                        customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(customQuery[field]).digest('base64');
+                        delete(customQuery[field]);
                     }
                 })
             }
