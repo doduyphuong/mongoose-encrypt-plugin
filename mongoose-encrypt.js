@@ -235,6 +235,17 @@ const MongooseEncryptPlugin = function (schema, options) {
         if (hideIV) {
             delete recordObject[hashField];
             delete recordObject[ivField];
+
+            for (const key in recordObject) {
+                if (typeof (recordObject[key]) == 'object' && !Array.isArray(recordObject[key])) {
+                    const dataChild = recordObject[key];
+
+                    if (dataChild.hasOwnProperty(hashField)) {
+                        delete dataChild[hashField];
+                        delete dataChild[ivField];
+                    }
+                }
+            }
         }
 
         return recordObject;
