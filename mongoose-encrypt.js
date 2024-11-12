@@ -141,15 +141,13 @@ const MongooseEncryptPlugin = function (schema, options) {
         let customAND = [];
 
         if (getQuery && !Array.isArray(getQuery)) {
-
-
-            if (getQuery['$or']) {
+            if (getQuery?.['$or']) {
                 const fieldOr = getQuery['$or'];
                 for (let i = 0; i < fieldOr.length; i++) {
                     const standField = fieldOr[i];
                     const key = Object.keys(standField)[0];
                     const checkHashField = fields.indexOf(key);
-                    if (checkHashField >= 0 && standField[key].hasOwnProperty('$eq')) {
+                    if (checkHashField >= 0 && standField[key]?.hasOwnProperty('$eq')) {
                         customOR.push({
                             [`${hashField}.${key}`]: {
                                 "$eq": crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64')
@@ -162,13 +160,13 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                 customQuery['$or'] = customOR;
             }
-            else if (getQuery['$and']) {
+            else if (getQuery?.['$and']) {
                 const fieldAND = getQuery['$and'];
                 for (let i = 0; i < fieldAND.length; i++) {
                     const standField = fieldAND[i];
                     const key = Object.keys(standField)[0];
                     const checkHashField = fields.indexOf(key);
-                    if (checkHashField >= 0 && standField[key].hasOwnProperty('$eq')) {
+                    if (checkHashField >= 0 && standField[key]?.hasOwnProperty('$eq')) {
                         customAND.push({
                             [`${hashField}.${key}`]: {
                                 "$eq": crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64')

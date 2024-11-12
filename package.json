@@ -1,6 +1,6 @@
 {
   "name": "mongoose-encrypt-plugin",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "encrypt data before data document store in the database",
   "main": "index.js",
   "scripts": {
