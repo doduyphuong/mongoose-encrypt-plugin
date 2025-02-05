@@ -196,7 +196,7 @@ const MongooseEncryptPlugin = function (schema, options) {
     function customDataAggregate(data) {
         const { hashField, ivField, salt, algorithm } = options;
 
-        if (data.hasOwnProperty(hashField)) {
+        if (data?.hasOwnProperty(hashField)) {
             for (const field in data[hashField]) {
                 const iv = data?.[ivField]?.[field] || '';
                 data[field] = decryptField({ iv, hash: data[field] }, salt, algorithm);
@@ -209,7 +209,7 @@ const MongooseEncryptPlugin = function (schema, options) {
                 if (typeof (data[key]) == 'object' && !Array.isArray(data[key])) {
                     const dataChild = data[key];
 
-                    if (dataChild.hasOwnProperty(hashField)) {
+                    if (dataChild?.hasOwnProperty(hashField)) {
                         for (const field in dataChild[hashField]) {
                             const iv = dataChild?.[ivField]?.[field] || '';
                             dataChild[field] = decryptField({ iv, hash: dataChild[field] }, salt, algorithm);
@@ -239,7 +239,7 @@ const MongooseEncryptPlugin = function (schema, options) {
                 if (typeof (recordObject[key]) == 'object' && !Array.isArray(recordObject[key])) {
                     const dataChild = recordObject[key];
 
-                    if (dataChild.hasOwnProperty(hashField)) {
+                    if (dataChild?.hasOwnProperty(hashField)) {
                         delete dataChild[hashField];
                         delete dataChild[ivField];
                     }
