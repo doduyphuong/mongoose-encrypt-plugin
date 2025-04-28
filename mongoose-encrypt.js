@@ -182,7 +182,14 @@ const MongooseEncryptPlugin = function (schema, options) {
             else {
                 fields.forEach(field => {
                     if (customQuery[field]) {
-                        customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(customQuery[field]).digest('base64');
+                        let tmpValue = customQuery[field];
+                        if (customQuery[field].hasOwnProperty("$ne")) {
+                            tmpValue = customQuery[field]['$ne'];
+                        } else if (customQuery[field].hasOwnProperty("$eq")) {
+                            tmpValue = customQuery[field]['$eq'];
+                        }
+
+                        customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(tmpValue).digest('base64');
                         delete(customQuery[field]);
                     }
                 })
@@ -255,6 +262,8 @@ const MongooseEncryptPlugin = function (schema, options) {
     schema.pre('findOneAndUpdate', updateRecord);
     schema.pre('find', processFindQuery);
     schema.pre('findOne', processFindQuery);
+    schema.pre('count', processFindQuery);
+    schema.pre('countDocuments', processFindQuery);
 
     // encrypt data (create, save) before document store in the database
     schema.pre('save', function (next) {
