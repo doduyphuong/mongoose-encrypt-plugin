@@ -185,12 +185,26 @@ const MongooseEncryptPlugin = function (schema, options) {
                         let tmpValue = customQuery[field];
                         if (customQuery[field].hasOwnProperty("$ne")) {
                             tmpValue = customQuery[field]['$ne'];
+                            customQuery[`${hashField}.${field}`] = {
+                                "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                            };
+                            delete (customQuery[field]);
                         } else if (customQuery[field].hasOwnProperty("$eq")) {
                             tmpValue = customQuery[field]['$eq'];
+                            customQuery[`${hashField}.${field}`] = {
+                                "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                            };
+                            delete (customQuery[field]);
+                        } else if (customQuery[field].hasOwnProperty("$exists")) {
+                            tmpValue = customQuery[field]['$exists'];
+                            customQuery[`${field}`] = {
+                                "$exists": tmpValue
+                            };
+                        } else {
+                            customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(tmpValue).digest('base64');
+                            delete (customQuery[field]);
                         }
 
-                        customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(tmpValue).digest('base64');
-                        delete(customQuery[field]);
                     }
                 })
             }
