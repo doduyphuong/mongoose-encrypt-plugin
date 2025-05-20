@@ -160,7 +160,8 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                 customQuery['$or'] = customOR;
             }
-            else if (getQuery?.['$and']) {
+
+            if (getQuery?.['$and']) {
                 const fieldAND = getQuery['$and'];
                 for (let i = 0; i < fieldAND.length; i++) {
                     const standField = fieldAND[i];
@@ -179,35 +180,34 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                 customQuery['$and'] = customAND;
             }
-            else {
-                fields.forEach(field => {
-                    if (customQuery[field]) {
-                        let tmpValue = customQuery[field];
-                        if (customQuery[field].hasOwnProperty("$ne")) {
-                            tmpValue = customQuery[field]['$ne'];
-                            customQuery[`${hashField}.${field}`] = {
-                                "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                            };
-                            delete (customQuery[field]);
-                        } else if (customQuery[field].hasOwnProperty("$eq")) {
-                            tmpValue = customQuery[field]['$eq'];
-                            customQuery[`${hashField}.${field}`] = {
-                                "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                            };
-                            delete (customQuery[field]);
-                        } else if (customQuery[field].hasOwnProperty("$exists")) {
-                            tmpValue = customQuery[field]['$exists'];
-                            customQuery[`${field}`] = {
-                                "$exists": tmpValue
-                            };
-                        } else {
-                            customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(tmpValue).digest('base64');
-                            delete (customQuery[field]);
-                        }
 
+            fields.forEach(field => {
+                if (customQuery[field]) {
+                    let tmpValue = customQuery[field];
+                    if (customQuery[field].hasOwnProperty("$ne")) {
+                        tmpValue = customQuery[field]['$ne'];
+                        customQuery[`${hashField}.${field}`] = {
+                            "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                        };
+                        delete (customQuery[field]);
+                    } else if (customQuery[field].hasOwnProperty("$eq")) {
+                        tmpValue = customQuery[field]['$eq'];
+                        customQuery[`${hashField}.${field}`] = {
+                            "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                        };
+                        delete (customQuery[field]);
+                    } else if (customQuery[field].hasOwnProperty("$exists")) {
+                        tmpValue = customQuery[field]['$exists'];
+                        customQuery[`${field}`] = {
+                            "$exists": tmpValue
+                        };
+                    } else {
+                        customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(tmpValue).digest('base64');
+                        delete (customQuery[field]);
                     }
-                })
-            }
+
+                }
+            })
         }
 
         that.setQuery(customQuery);
