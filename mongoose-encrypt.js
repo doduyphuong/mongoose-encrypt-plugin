@@ -1,7 +1,31 @@
 const crypto = require('crypto');
 const omit = require('lodash/omit');
 const mongoose = require('mongoose');
+const asyncHooks = require('async_hooks');
 const hashHelper = require('./helpers/hash');
+
+// Create AsyncLocalStorage for user context (role/permissions)
+const userContextStore = new asyncHooks.AsyncLocalStorage();
+
+/**
+ * Get current user role from context
+ * @returns {string|null} The user role
+ */
+function getCurrentUserRole() {
+    const context = userContextStore.getStore();
+
+    return context?.isShowDecrypted || false;
+}
+
+/**
+ * Check if user has permission to access a field
+ * @returns {boolean} True if user can access the field
+ */
+function canAccessField() {
+    const userRole = getCurrentUserRole();
+
+    return userRole;
+}
 
 /**
  * 
@@ -147,6 +171,7 @@ const MongooseEncryptPlugin = function (schema, options) {
                     const standField = fieldOr[i];
                     const key = Object.keys(standField)[0];
                     const checkHashField = fields.indexOf(key);
+
                     if (checkHashField >= 0 && standField[key]?.hasOwnProperty('$eq')) {
                         customOR.push({
                             [`${hashField}.${key}`]: {
@@ -189,12 +214,14 @@ const MongooseEncryptPlugin = function (schema, options) {
                         customQuery[`${hashField}.${field}`] = {
                             "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
                         };
+
                         delete (customQuery[field]);
                     } else if (customQuery[field].hasOwnProperty("$eq")) {
                         tmpValue = customQuery[field]['$eq'];
                         customQuery[`${hashField}.${field}`] = {
                             "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
                         };
+
                         delete (customQuery[field]);
                     } else if (customQuery[field].hasOwnProperty("$exists")) {
                         tmpValue = customQuery[field]['$exists'];
@@ -248,7 +275,7 @@ const MongooseEncryptPlugin = function (schema, options) {
 
     schema.method('toJSON', function () {
         let that = this;
-        const { hashField, ivField, hideIV } = options;
+        const { hashField, ivField, hideIV, fields } = options;
         const record = that;
         const recordObject = record.toObject();
 
@@ -349,8 +376,12 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                 fields.forEach(field => {
                     if (doc[field]) {
-                        const iv = doc[ivField][field];
-                        doc[field] = decryptField({ iv: iv, hash: doc[field] }, salt, algorithm);
+                        // Check if user has permission to access this field
+                        if (canAccessField()) {
+                            const iv = doc[ivField][field];
+                            doc[field] = decryptField({ iv: iv, hash: doc[field] }, salt, algorithm);
+                        }
+                        // else not decrypt the field
                     }
                 });
             }
@@ -376,8 +407,12 @@ const MongooseEncryptPlugin = function (schema, options) {
 
         fields.forEach(field => {
             if (doc[field]) {
-                const iv = doc?.[ivField]?.[field] || '';
-                doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
+                // Check if user has permission to access this field
+                if (canAccessField()) {
+                    const iv = doc?.[ivField]?.[field] || '';
+                    doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
+                }
+                // else not decrypt the field
             }
         });
     });
@@ -388,11 +423,15 @@ const MongooseEncryptPlugin = function (schema, options) {
 
         fields.forEach(field => {
             if (doc[field]) {
-                const iv = doc?.[ivField]?.[field] || '';
-                doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
+                // Check if user has permission to access this field
+                if (canAccessField()) {
+                    const iv = doc?.[ivField]?.[field] || '';
+                    doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
+                }
+                // else not decrypt the field
             }
         });
     });
 }
 
-module.exports = { MongooseEncryptPlugin };
+module.exports = { MongooseEncryptPlugin, userContextStore, getCurrentUserRole };

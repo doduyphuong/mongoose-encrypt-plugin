@@ -1,3 +1,3 @@
-const MongooseEncryptPlugin = require('./mongoose-encrypt');
+const { MongooseEncryptPlugin, userContextStore, getCurrentUserRole } = require('./mongoose-encrypt');
 
-module.exports = { ...MongooseEncryptPlugin };
+module.exports = { MongooseEncryptPlugin, userContextStore, getCurrentUserRole };
