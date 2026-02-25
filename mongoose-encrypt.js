@@ -81,6 +81,7 @@ function defaultOptions(options) {
         hashField: 'hashField',
         ivField: 'ivField',
         hideIV: true,
+        haveDataNotEncrypt: false,
         ...options
     }
 
@@ -110,6 +111,7 @@ function defaultOptions(options) {
  * - [hashField] string - defaults to `hashField`
  * - [ivField] string - defaults to  `ivField`
  * - [hideIV] bool - defaults to true
+ * - [haveDataNotEncrypt] bool - defaults to false. If true, the plugin will be find data with query encrypt and not encrypt.
  * 
  * @param {Schema} schema - The schema is Schema in mongoose
  * @param {Object} options - The options object pass to interface "IMongooseEncryptOptions"
@@ -148,7 +150,7 @@ const MongooseEncryptPlugin = function (schema, options) {
 
     function processFindQuery(next) {
         let that = this;
-        const { hashField, ivField, fields } = options;
+        const { hashField, ivField, fields, haveDataNotEncrypt } = options;
         const selectField = that.projection();
 
         if (selectField && !selectField?.hasOwnProperty(hashField)) {
@@ -160,6 +162,7 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
 
         const getQuery = that.getQuery();
+        // console.log('processFindQuery-getQuery', getQuery);
         const customQuery = omit(getQuery, ["$or", "$and"]);
         let customOR = [];
         let customAND = [];
@@ -173,17 +176,56 @@ const MongooseEncryptPlugin = function (schema, options) {
                     const checkHashField = fields.indexOf(key);
 
                     if (checkHashField >= 0 && standField[key]?.hasOwnProperty('$eq')) {
+                        let objectData = {};
+                        let objectDataNotEncrypt = {};
+
+                        if (standField[key]?.hasOwnProperty('$eq')) {
+                            const dataEncrypt = crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64');
+                            objectData = {
+                                [`${hashField}.${key}`]: {
+                                    "$eq": dataEncrypt
+                                }
+                            };
+
+                            objectDataNotEncrypt = {
+                                [key]: {
+                                    "$eq": standField[key]['$eq']
+                                }
+                            };
+
+                            customOR.push(objectData);
+                        }
+                        else if (standField[key]?.hasOwnProperty('$regex')) {
+                            let tmpRegex = standField[key]['$regex'].replace(/[.*]/g, '');
+                            const dataEncrypt = crypto.createHash('sha256').update(tmpRegex).digest('base64');
+                            objectData = {
+                                [`${hashField}.${key}`]: {
+                                    "$eq": dataEncrypt
+                                }
+                            };
+
+                            objectDataNotEncrypt = {
+                                [key]: {
+                                    "$eq": tmpRegex
+                                }
+                            };
+
+                            customOR.push(objectData);
+                        }
+
                         customOR.push({
                             [`${hashField}.${key}`]: {
                                 "$eq": crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64')
                             }
-                        })
+                        });
+
+                        if (haveDataNotEncrypt && Object.keys(objectDataNotEncrypt).length > 0) {
+                            customOR.push(objectDataNotEncrypt);
+                        }
                     } else {
                         customOR.push(standField);
                     }
                 }
-
-                customQuery['$or'] = customOR;
             }
 
             if (getQuery?.['$and']) {
@@ -192,18 +234,52 @@ const MongooseEncryptPlugin = function (schema, options) {
                     const standField = fieldAND[i];
                     const key = Object.keys(standField)[0];
                     const checkHashField = fields.indexOf(key);
-                    if (checkHashField >= 0 && standField[key]?.hasOwnProperty('$eq')) {
-                        customAND.push({
-                            [`${hashField}.${key}`]: {
-                                "$eq": crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64')
-                            }
-                        })
+
+                    if (checkHashField >= 0) {
+                        let objectData = {};
+                        let objectDataNotEncrypt = {};
+
+                        if (standField[key]?.hasOwnProperty('$eq')) {
+                            const dataEncrypt = crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64');
+                            objectData = {
+                                [`${hashField}.${key}`]: {
+                                    "$eq": dataEncrypt
+                                }
+                            };
+
+                            objectDataNotEncrypt = {
+                                [key]: {
+                                    "$eq": standField[key]['$eq']
+                                }
+                            };
+
+                            customOR.push(objectData);
+                        }
+                        else if (standField[key]?.hasOwnProperty('$regex')) {
+                            let tmpRegex = standField[key]['$regex'].replace(/[.*]/g, '');
+                            const dataEncrypt = crypto.createHash('sha256').update(tmpRegex).digest('base64');
+                            objectData = {
+                                [`${hashField}.${key}`]: {
+                                    "$eq": dataEncrypt
+                                }
+                            };
+
+                            objectDataNotEncrypt = {
+                                [key]: {
+                                    "$eq": tmpRegex
+                                }
+                            };
+
+                            customOR.push(objectData);
+                        }
+
+                        if (haveDataNotEncrypt && Object.keys(objectDataNotEncrypt).length > 0) {
+                            customOR.push(objectDataNotEncrypt);
+                        }
                     } else {
                         customAND.push(standField);
                     }
                 }
-
-                customQuery['$and'] = customAND;
             }
 
             fields.forEach(field => {
@@ -211,30 +287,88 @@ const MongooseEncryptPlugin = function (schema, options) {
                     let tmpValue = customQuery[field];
                     if (customQuery[field].hasOwnProperty("$ne")) {
                         tmpValue = customQuery[field]['$ne'];
-                        customQuery[`${hashField}.${field}`] = {
-                            "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                        };
+
+                        if (haveDataNotEncrypt) {
+                            customAND.push({
+                                [field]: {
+                                    "$ne": tmpValue
+                                }
+                            });
+
+                            customAND.push({
+                                [`${hashField}.${field}`]: {
+                                    "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                                }
+                            });
+                        } else {
+                            customQuery[`${hashField}.${field}`] = {
+                                "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                            };
+                        }
 
                         delete (customQuery[field]);
                     } else if (customQuery[field].hasOwnProperty("$eq")) {
                         tmpValue = customQuery[field]['$eq'];
-                        customQuery[`${hashField}.${field}`] = {
-                            "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                        };
+
+                        if (haveDataNotEncrypt) {
+                            customOR.push({
+                                [field]: {
+                                    "$eq": tmpValue
+                                }
+                            });
+
+                            customOR.push({
+                                [`${hashField}.${field}`]: {
+                                    "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                                }
+                            });
+                        } else {
+                            customQuery[`${hashField}.${field}`] = {
+                                "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                            };
+                        }
 
                         delete (customQuery[field]);
                     } else if (customQuery[field].hasOwnProperty("$exists")) {
                         tmpValue = customQuery[field]['$exists'];
-                        customQuery[`${field}`] = {
-                            "$exists": tmpValue
-                        };
+
+                        if (haveDataNotEncrypt) {
+                            customOR.push({
+                                [field]: {
+                                    "$exists": tmpValue
+                                }
+                            });
+
+                            customOR.push({
+                                [`${hashField}.${field}`]: {
+                                    "$exists": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                                }
+                            });
+                        } else {
+                            customQuery[`${hashField}.${field}`] = {
+                                "$exists": crypto.createHash('sha256').update(tmpValue).digest('base64')
+                            };
+                        }
+
+                        delete (customQuery[field]);
                     } else {
-                        customQuery[`${hashField}.${field}`] = crypto.createHash('sha256').update(tmpValue).digest('base64');
+                        const hashValue = crypto.createHash('sha256').update(tmpValue).digest('base64');
+
+                        if (haveDataNotEncrypt) {
+                            customOR.push({ [field]: tmpValue });
+                            customOR.push({ [`${hashField}.${field}`]: hashValue });
+                        } else {
+                            customQuery[`${hashField}.${field}`] = hashValue;
+                        }
+
                         delete (customQuery[field]);
                     }
 
                 }
             })
+
+            if (customOR.length) { customQuery['$or'] = customOR; }
+            if (customAND.length) { customQuery['$and'] = customAND; }
         }
 
         that.setQuery(customQuery);
@@ -370,6 +504,7 @@ const MongooseEncryptPlugin = function (schema, options) {
     schema.post('insertMany', async function (docs) {
         if (Array.isArray(docs) && docs.length) {
             const { ivField, salt, algorithm, fields } = options;
+            const canAccess = canAccessField();
 
             for (let i = 0; i < docs.length; i++) {
                 const doc = docs[i];
@@ -377,7 +512,7 @@ const MongooseEncryptPlugin = function (schema, options) {
                 fields.forEach(field => {
                     if (doc[field]) {
                         // Check if user has permission to access this field
-                        if (canAccessField()) {
+                        if (canAccess) {
                             const iv = doc[ivField][field];
                             doc[field] = decryptField({ iv: iv, hash: doc[field] }, salt, algorithm);
                         }
@@ -404,11 +539,12 @@ const MongooseEncryptPlugin = function (schema, options) {
     // encrypt data (create, save) before document store in the database
     schema.post('save', function (doc) {
         const { ivField, salt, algorithm, fields } = options;
+        const canAccess = canAccessField();
 
         fields.forEach(field => {
             if (doc[field]) {
                 // Check if user has permission to access this field
-                if (canAccessField()) {
+                if (canAccess) {
                     const iv = doc?.[ivField]?.[field] || '';
                     doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
                 }
@@ -420,11 +556,12 @@ const MongooseEncryptPlugin = function (schema, options) {
     // decrypt data when document return from mongoose query
     schema.post('init', function (doc) {
         const { ivField, salt, algorithm, fields } = options;
+        const canAccess = canAccessField();
 
         fields.forEach(field => {
             if (doc[field]) {
                 // Check if user has permission to access this field
-                if (canAccessField()) {
+                if (canAccess) {
                     const iv = doc?.[ivField]?.[field] || '';
                     doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
                 }
