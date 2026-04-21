@@ -21,10 +21,14 @@ function getCurrentUserRole() {
  * Check if user has permission to access a field
  * @returns {boolean} True if user can access the field
  */
-function canAccessField() {
-    const userRole = getCurrentUserRole();
+function canAccessField(validAccessData) {
+    if (validAccessData) {
+        const userRole = getCurrentUserRole();
 
-    return userRole;
+        return userRole;
+    }
+
+    return true;
 }
 
 /**
@@ -82,6 +86,7 @@ function defaultOptions(options) {
         ivField: 'ivField',
         hideIV: true,
         haveDataNotEncrypt: false,
+        validAccessData: false,
         ...options
     }
 
@@ -112,6 +117,7 @@ function defaultOptions(options) {
  * - [ivField] string - defaults to  `ivField`
  * - [hideIV] bool - defaults to true
  * - [haveDataNotEncrypt] bool - defaults to false. If true, the plugin will be find data with query encrypt and not encrypt.
+ * - [validAccessData] bool - defaults to false. If true, the function "canAccessField" will validation role access decrypt data.
  * 
  * @param {Schema} schema - The schema is Schema in mongoose
  * @param {Object} options - The options object pass to interface "IMongooseEncryptOptions"
