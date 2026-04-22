@@ -125,7 +125,7 @@ function defaultOptions(options) {
 const MongooseEncryptPlugin = function (schema, options) {
     options = defaultOptions(options)
 
-    function updateRecord(next) {
+    async function updateRecord() {
         let that = this;
 
         const getUpdate = that.getUpdate();
@@ -150,11 +150,9 @@ const MongooseEncryptPlugin = function (schema, options) {
                 }
             })
         }
-
-        next()
     }
 
-    function processFindQuery(next) {
+    async function processFindQuery() {
         let that = this;
         const { hashField, ivField, fields, haveDataNotEncrypt } = options;
         const selectField = that.projection();
@@ -168,7 +166,6 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
 
         const getQuery = that.getQuery();
-        // console.log('processFindQuery-getQuery', getQuery);
         const customQuery = omit(getQuery, ["$or", "$and"]);
         let customOR = [];
         let customAND = [];
@@ -378,7 +375,6 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
 
         that.setQuery(customQuery);
-        next();
     }
 
     function customDataAggregate(data) {
@@ -447,7 +443,7 @@ const MongooseEncryptPlugin = function (schema, options) {
     schema.pre('countDocuments', processFindQuery);
 
     // encrypt data (create, save) before document store in the database
-    schema.pre('save', function (next) {
+    schema.pre('save', async function () {
         let that = this;
         const dataInit = that;
         const { hashField, ivField, salt, algorithm, fields } = options;
@@ -464,12 +460,10 @@ const MongooseEncryptPlugin = function (schema, options) {
                 dataInit[ivField][field] = iv;
                 dataInit[field] = encrypted;
             }
-        })
-
-        next();
+        });
     });
 
-    schema.pre('insertMany', async function (next, docs) {
+    schema.pre('insertMany', async function (docs) {
         try {
             if (Array.isArray(docs) && docs.length) {
                 const { hashField, ivField, salt, algorithm, fields } = options;
@@ -497,13 +491,14 @@ const MongooseEncryptPlugin = function (schema, options) {
                 });
 
                 docs = await Promise.all(hashFieldData);
-                next();
             } else {
-                return next(new Error("List should not be empty"));
+                // return next(new Error("List should not be empty"));
+                throw new Error('List should not be empty');
             }
         } catch (error) {
             console.log('error: ', error);
-            return next(new Error("Something error"));
+            // return next(new Error("Something error"));
+            throw new Error('List should not be empty');
         }
     });
 
