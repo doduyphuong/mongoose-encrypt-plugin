@@ -379,7 +379,6 @@ const MongooseEncryptPlugin = function (schema, options) {
 
     function customDataAggregate(data) {
         const { hashField, ivField, salt, algorithm } = options;
-
         if (data?.hasOwnProperty(hashField)) {
             for (const field in data[hashField]) {
                 const iv = data?.[ivField]?.[field] || '';
@@ -556,19 +555,18 @@ const MongooseEncryptPlugin = function (schema, options) {
 
     // decrypt data when document return from mongoose query
     schema.post('init', function (doc) {
-        const { ivField, salt, algorithm, fields } = options;
+        const { hashField, ivField, salt, algorithm, fields } = options;
         const canAccess = canAccessField();
 
-        fields.forEach(field => {
-            if (doc[field]) {
-                // Check if user has permission to access this field
-                if (canAccess) {
-                    const iv = doc?.[ivField]?.[field] || '';
-                    doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
-                }
-                // else not decrypt the field
+        if (doc?.hasOwnProperty(hashField)) {
+            for (const field in doc[hashField]) {
+                const iv = doc?.[ivField]?.[field] || '';
+                doc[field] = decryptField({ iv, hash: doc[field] }, salt, algorithm);
             }
-        });
+
+            delete doc[hashField];
+            delete doc[ivField];
+        }
     });
 }
 
