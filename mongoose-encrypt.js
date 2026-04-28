@@ -558,15 +558,19 @@ const MongooseEncryptPlugin = function (schema, options) {
         const { hashField, ivField, salt, algorithm, fields } = options;
         const canAccess = canAccessField();
 
-        if (doc?.hasOwnProperty(hashField)) {
-            for (const field in doc[hashField]) {
-                const iv = doc?.[ivField]?.[field] || '';
-                doc[field] = decryptField({ iv, hash: doc[field] }, salt, algorithm);
-            }
-
-            delete doc[hashField];
-            delete doc[ivField];
+        if (canAccess) {
+            fields.forEach(field => {
+                if (doc[field]) {
+                    const iv = doc?.[ivField]?.[field] || '';
+                    if (iv) {
+                        doc[field] = decryptField({ iv, hash: doc[field].toString() }, salt, algorithm);
+                    }
+                }
+            })
         }
+
+        delete doc[hashField];
+        delete doc[ivField];
     });
 }
 
