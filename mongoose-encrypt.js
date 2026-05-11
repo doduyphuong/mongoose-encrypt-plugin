@@ -155,7 +155,7 @@ const MongooseEncryptPlugin = function (schema, options) {
     async function processFindQuery() {
         let that = this;
         const { hashField, ivField, fields, haveDataNotEncrypt } = options;
-        const selectField = that.projection();
+        const selectField = that.projection() || {};
 
         if (selectField && !selectField?.hasOwnProperty(hashField)) {
             selectField[hashField] = 1
@@ -178,7 +178,7 @@ const MongooseEncryptPlugin = function (schema, options) {
                     const key = Object.keys(standField)[0];
                     const checkHashField = fields.indexOf(key);
 
-                    if (checkHashField >= 0 && standField[key]?.hasOwnProperty('$eq')) {
+                    if (checkHashField >= 0) {
                         let objectData = {};
                         let objectDataNotEncrypt = {};
 
@@ -215,12 +215,6 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                             customOR.push(objectData);
                         }
-
-                        customOR.push({
-                            [`${hashField}.${key}`]: {
-                                "$eq": crypto.createHash('sha256').update(standField[key]['$eq']).digest('base64')
-                            }
-                        });
 
                         if (haveDataNotEncrypt && Object.keys(objectDataNotEncrypt).length > 0) {
                             customOR.push(objectDataNotEncrypt);
