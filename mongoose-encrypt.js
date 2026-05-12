@@ -215,6 +215,22 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                             customOR.push(objectData);
                         }
+                        else {
+                            const dataEncrypt = crypto.createHash('sha256').update(standField[key]).digest('base64');
+                            objectData = {
+                                [`${hashField}.${key}`]: {
+                                    "$eq": dataEncrypt
+                                }
+                            };
+
+                            objectDataNotEncrypt = {
+                                [key]: {
+                                    "$eq": standField[key]
+                                }
+                            };
+
+                            customOR.push(objectData);
+                        }
 
                         if (haveDataNotEncrypt && Object.keys(objectDataNotEncrypt).length > 0) {
                             customOR.push(objectDataNotEncrypt);
@@ -264,6 +280,22 @@ const MongooseEncryptPlugin = function (schema, options) {
                             objectDataNotEncrypt = {
                                 [key]: {
                                     "$eq": tmpRegex
+                                }
+                            };
+
+                            customOR.push(objectData);
+                        }
+                        else {
+                            const dataEncrypt = crypto.createHash('sha256').update(standField[key]).digest('base64');
+                            objectData = {
+                                [`${hashField}.${key}`]: {
+                                    "$eq": dataEncrypt
+                                }
+                            };
+
+                            objectDataNotEncrypt = {
+                                [key]: {
+                                    "$eq": standField[key]
                                 }
                             };
 
