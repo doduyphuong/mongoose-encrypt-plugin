@@ -401,6 +401,7 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
 
         that.setQuery(customQuery);
+        that.select(selectField);
     }
 
     function customDataAggregate(data) {
@@ -413,23 +414,35 @@ const MongooseEncryptPlugin = function (schema, options) {
 
             delete data[hashField];
             delete data[ivField];
-        } else {
-            for (const key in data) {
-                if (typeof (data[key]) == 'object' && !Array.isArray(data[key])) {
-                    const dataChild = data[key];
+        }
 
-                    if (dataChild?.hasOwnProperty(hashField)) {
-                        for (const field in dataChild[hashField]) {
-                            const iv = dataChild?.[ivField]?.[field] || '';
-                            dataChild[field] = decryptField({ iv, hash: dataChild[field] }, salt, algorithm);
-                        }
-
-                        delete dataChild[hashField];
-                        delete dataChild[ivField];
-                    }
+        for (const field in data) {
+            if (typeof (data[field]) == 'object' && !Array.isArray(data[field])) {
+                data[field] = decryptDataObject(data[field]);
+            }
+            else if (typeof (data[field]) == 'object' && Array.isArray(data[field])) {
+                // Foreach child
+                for (let i = 0; i < data[field].length; i++) {
+                    const tmpObject = decryptDataObject(data[field][i]);
+                    data[field][i] = tmpObject;
                 }
             }
         }
+    }
+
+    function decryptDataObject(data) {
+        const { hashField, ivField, salt, algorithm } = options;
+        if (data?.hasOwnProperty(hashField)) {
+            for (const field in data[hashField]) {
+                const iv = data?.[ivField]?.[field] || '';
+                data[field] = decryptField({ iv, hash: data[field] }, salt, algorithm);
+            }
+
+            delete data[hashField];
+            delete data[ivField];
+        }
+
+        return data;
     }
 
     schema.add({ [options.hashField]: mongoose.Schema.Types.Mixed, [options.ivField]: mongoose.Schema.Types.Mixed });
