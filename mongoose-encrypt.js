@@ -401,7 +401,6 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
 
         that.setQuery(customQuery);
-        that.select(selectField);
     }
 
     function customDataAggregate(data) {
