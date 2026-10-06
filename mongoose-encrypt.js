@@ -18,8 +18,11 @@ function getCurrentUserRole() {
 }
 
 /**
- * Check if user has permission to access a field
- * @returns {boolean} True if user can access the field
+ * Check if the current async context is allowed to see decrypted data.
+ * When `validAccessData` is false (default) data is always decrypted (v1 behaviour).
+ * When it is true, data is decrypted only inside `userContextStore.run({ isShowDecrypted: true }, ...)`.
+ * @param {boolean} validAccessData - the plugin option `validAccessData`
+ * @returns {boolean} True if decrypted values may be returned
  */
 function canAccessField(validAccessData) {
     if (validAccessData) {
@@ -403,12 +406,14 @@ const MongooseEncryptPlugin = function (schema, options) {
         that.setQuery(customQuery);
     }
 
-    function customDataAggregate(data) {
+    function customDataAggregate(data, canAccess) {
         const { hashField, ivField, salt, algorithm } = options;
         if (data?.hasOwnProperty(hashField)) {
-            for (const field in data[hashField]) {
-                const iv = data?.[ivField]?.[field] || '';
-                data[field] = decryptField({ iv, hash: data[field] }, salt, algorithm);
+            if (canAccess) {
+                for (const field in data[hashField]) {
+                    const iv = data?.[ivField]?.[field] || '';
+                    data[field] = decryptField({ iv, hash: data[field] }, salt, algorithm);
+                }
             }
 
             delete data[hashField];
@@ -417,24 +422,26 @@ const MongooseEncryptPlugin = function (schema, options) {
 
         for (const field in data) {
             if (typeof (data[field]) == 'object' && !Array.isArray(data[field])) {
-                data[field] = decryptDataObject(data[field]);
+                data[field] = decryptDataObject(data[field], canAccess);
             }
             else if (typeof (data[field]) == 'object' && Array.isArray(data[field])) {
                 // Foreach child
                 for (let i = 0; i < data[field].length; i++) {
-                    const tmpObject = decryptDataObject(data[field][i]);
+                    const tmpObject = decryptDataObject(data[field][i], canAccess);
                     data[field][i] = tmpObject;
                 }
             }
         }
     }
 
-    function decryptDataObject(data) {
+    function decryptDataObject(data, canAccess) {
         const { hashField, ivField, salt, algorithm } = options;
         if (data?.hasOwnProperty(hashField)) {
-            for (const field in data[hashField]) {
-                const iv = data?.[ivField]?.[field] || '';
-                data[field] = decryptField({ iv, hash: data[field] }, salt, algorithm);
+            if (canAccess) {
+                for (const field in data[hashField]) {
+                    const iv = data?.[ivField]?.[field] || '';
+                    data[field] = decryptField({ iv, hash: data[field] }, salt, algorithm);
+                }
             }
 
             delete data[hashField];
@@ -481,68 +488,80 @@ const MongooseEncryptPlugin = function (schema, options) {
 
     // encrypt data (create, save) before document store in the database
     schema.pre('save', async function () {
-        let that = this;
-        const dataInit = that;
+        const doc = this;
         const { hashField, ivField, salt, algorithm, fields } = options;
 
-        dataInit[hashField] = {};
-        dataInit[ivField] = {};
+        // Keep hash/iv of the fields that are not re-encrypted in this save.
+        const hashData = doc.isNew ? {} : { ...(doc.get(hashField) || {}) };
+        const ivData = doc.isNew ? {} : { ...(doc.get(ivField) || {}) };
 
         fields.forEach(field => {
-            if (dataInit[field] && dataInit[field] != '') {
-                const dataField = dataInit[field].toString();
-
-                const { iv, encrypted } = encryptField(dataField, salt, algorithm);
-                dataInit[hashField][field] = crypto.createHash('sha256').update(dataField).digest('base64');
-                dataInit[ivField][field] = iv;
-                dataInit[field] = encrypted;
+            // An unchanged field that already has an iv still holds the stored ciphertext
+            // (e.g. the document was loaded without decryption rights): never encrypt it twice.
+            if (!doc.isNew && !doc.isModified(field) && ivData[field]) {
+                return;
             }
+
+            const value = doc.get(field);
+
+            if (value === undefined || value === null || value === '') {
+                // Value cleared: drop the stale hash so old values can no longer be found.
+                delete hashData[field];
+                delete ivData[field];
+                return;
+            }
+
+            const dataField = value.toString();
+            const { iv, encrypted } = encryptField(dataField, salt, algorithm);
+
+            hashData[field] = crypto.createHash('sha256').update(dataField).digest('base64');
+            ivData[field] = iv;
+            doc.set(field, encrypted);
         });
+
+        doc.set(hashField, hashData);
+        doc.set(ivField, ivData);
     });
 
-    schema.pre('insertMany', async function (docs) {
-        try {
-            if (Array.isArray(docs) && docs.length) {
-                const { hashField, ivField, salt, algorithm, fields } = options;
+    // Mongoose 7/8 call insertMany pre hooks with (next, docs), Mongoose 9 with (docs).
+    // `docs` is the array (or single object) passed to Model.insertMany().
+    schema.pre('insertMany', async function (arg0, arg1) {
+        const input = typeof arg0 === 'function' ? arg1 : arg0;
+        const docs = Array.isArray(input) ? input : (input && typeof input === 'object' ? [input] : []);
+        const { hashField, ivField, salt, algorithm, fields } = options;
 
-                const hashFieldData = docs.map(async (data) => {
-                    return await new Promise((resolve, reject) => {
-                        try {
-                            data[hashField] = {};
-                            data[ivField] = {};
-
-                            fields.forEach(field => {
-                                if (data[field] && data[field] != '') {
-                                    const { iv, encrypted } = encryptField(data[field], salt, algorithm);
-                                    data[hashField][field] = crypto.createHash('sha256').update(data[field]).digest('base64');
-                                    data[ivField][field] = iv;
-                                    data[field] = encrypted;
-                                }
-                            })
-
-                            resolve(data);
-                        } catch (error) {
-                            reject(error);
-                        }
-                    })
-                });
-
-                docs = await Promise.all(hashFieldData);
-            } else {
-                // return next(new Error("List should not be empty"));
-                throw new Error('List should not be empty');
+        for (const data of docs) {
+            if (!data || typeof data !== 'object') {
+                continue; // let Mongoose report invalid input
             }
-        } catch (error) {
-            console.log('error: ', error);
-            // return next(new Error("Something error"));
-            throw new Error('List should not be empty');
+
+            const hashData = {};
+            const ivData = {};
+
+            fields.forEach(field => {
+                const value = data[field];
+
+                if (value === undefined || value === null || value === '') {
+                    return;
+                }
+
+                const dataField = value.toString();
+                const { iv, encrypted } = encryptField(dataField, salt, algorithm);
+
+                hashData[field] = crypto.createHash('sha256').update(dataField).digest('base64');
+                ivData[field] = iv;
+                data[field] = encrypted;
+            });
+
+            data[hashField] = hashData;
+            data[ivField] = ivData;
         }
     });
 
     schema.post('insertMany', async function (docs) {
         if (Array.isArray(docs) && docs.length) {
             const { ivField, salt, algorithm, fields } = options;
-            const canAccess = canAccessField();
+            const canAccess = canAccessField(options.validAccessData);
 
             for (let i = 0; i < docs.length; i++) {
                 const doc = docs[i];
@@ -551,7 +570,7 @@ const MongooseEncryptPlugin = function (schema, options) {
                     if (doc[field]) {
                         // Check if user has permission to access this field
                         if (canAccess) {
-                            const iv = doc[ivField][field];
+                            const iv = doc?.[ivField]?.[field] || '';
                             doc[field] = decryptField({ iv: iv, hash: doc[field] }, salt, algorithm);
                         }
                         // else not decrypt the field
@@ -564,8 +583,10 @@ const MongooseEncryptPlugin = function (schema, options) {
     schema.post('aggregate', function (docs) {
         try {
             if (docs.length) {
-                for (let data of docs) {
-                    data = customDataAggregate(data);
+                const canAccess = canAccessField(options.validAccessData);
+
+                for (const data of docs) {
+                    customDataAggregate(data, canAccess);
                 }
             }
         } catch (error) {
@@ -577,7 +598,7 @@ const MongooseEncryptPlugin = function (schema, options) {
     // encrypt data (create, save) before document store in the database
     schema.post('save', function (doc) {
         const { ivField, salt, algorithm, fields } = options;
-        const canAccess = canAccessField();
+        const canAccess = canAccessField(options.validAccessData);
 
         fields.forEach(field => {
             if (doc[field]) {
@@ -594,7 +615,7 @@ const MongooseEncryptPlugin = function (schema, options) {
     // decrypt data when document return from mongoose query
     schema.post('init', function (doc) {
         const { hashField, ivField, salt, algorithm, fields } = options;
-        const canAccess = canAccessField();
+        const canAccess = canAccessField(options.validAccessData);
 
         if (canAccess) {
             fields.forEach(field => {

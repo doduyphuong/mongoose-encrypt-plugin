@@ -71,12 +71,24 @@ These are the available config options for the plugin.
   // `hideIV` is field verify when document return ignore field `hashField` and `ivField`
   // Default value is true
   hideIV?: true
+
+  // `haveDataNotEncrypt` set to true when the collection still has old documents stored in plaintext.
+  // Queries on encrypted fields will then match both the encrypted and the plaintext value.
+  // Default value is false
+  haveDataNotEncrypt?: false
+
+  // `validAccessData` enables permission-based decryption (see below).
+  // false (default): encrypted fields are always decrypted.
+  // true: encrypted fields are decrypted only when `isShowDecrypted` is true in the async context.
+  validAccessData?: false
 }
 ```
 
 # Permission-Based Field Decryption
 
 This plugin supports conditional field decryption using Node.js `async_hooks`. You can control whether encrypted fields are decrypted in the response or returned in encrypted form.
+
+> **Requires `validAccessData: true`.** With the default `validAccessData: false`, encrypted fields are always decrypted and `isShowDecrypted` is ignored (versions before 1.1.9 ignored it in every case).
 
 ## Setup
 
@@ -86,7 +98,8 @@ const { MongooseEncryptPlugin, userContextStore } = require('mongoose-encrypt-pl
 // The plugin will only decrypt fields when isShowDecrypted flag is set to true in the async context
 TestSchema.plugin(MongooseEncryptPlugin, {
     fields: ['email', 'phone', 'address'],
-    salt: 'vZYt@CAkuMKB9Z#SHZF4d7puRt!MhCiK'
+    salt: 'vZYt@CAkuMKB9Z#SHZF4d7puRt!MhCiK',
+    validAccessData: true
 });
 
 const TestModel = mongoose.model('test', TestSchema);
@@ -144,12 +157,18 @@ app.get('/api/users/:id', async (req, res) => {
 
 ## How It Works
 
+With `validAccessData: true`:
+
 1. When `isShowDecrypted` is `true` in the async context, encrypted fields are decrypted and returned as plaintext
-2. When `isShowDecrypted` is `false` or not set, encrypted fields remain encrypted (return hashed values)
-3. Query operations (find, findById, etc.) work normally regardless of decryption setting
+2. When `isShowDecrypted` is `false` or not set, encrypted fields remain encrypted (the stored ciphertext is returned)
+3. Query operations (find, findById, etc.) work normally regardless of decryption setting, including search by an encrypted field
 4. Update operations encrypt new data and respect the decryption context for the returned document
-5. The `.toJSON()` method respects the permission context during serialization
+5. `.toJSON()` returns the values as they were loaded (decrypted or encrypted)
 6. The `.save()` post hook respects permission context when returning the saved document
+7. `aggregate()` results follow the same rule
+8. Saving a document that was loaded without decryption rights is safe: unchanged encrypted fields are kept as they are, only fields you set are encrypted again
+
+> **Await the query inside `run()`.** Mongoose queries are lazy. `userContextStore.run(ctx, () => Model.findById(id))` returns the query unexecuted, so it runs *outside* the context when you await it later. Always write `userContextStore.run(ctx, async () => await Model.findById(id))`, or run the whole request handler inside the context as in the Express example.
 
 ## Query Examples
 
@@ -187,10 +206,19 @@ await userContextStore.run({ isShowDecrypted: true }, async () => {
 });
 ```
 
-## Example Test
+## Example
 
-See [test/index.js](./test/index.js) for complete test examples including:
+See [examples/demo.js](./examples/demo.js) (`npm run demo`, needs a local MongoDB) for a walkthrough of:
 - Basic CRUD operations
 - Find operations with/without decryption
 - Update operations with permission checks
-- Insert multiple documents with permission context
+
+Run the automated tests with `npm test` (uses an in-memory MongoDB, or `MONGO_URI` when set).
+
+# Known limitations (v1.x)
+
+These are addressed in v2 (Mongoose 9):
+
+- Only equality search (`value`, `$eq`, `$ne`) is supported on encrypted fields; `$regex`, `$in`, `$exists`, ranges are not
+- `unique: true` on an encrypted field has no effect, because the ciphertext is different every time
+- The search hash is an unkeyed SHA-256 of the value; low-entropy values (phone numbers, short codes) can be guessed by anyone who can read the database
