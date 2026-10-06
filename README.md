@@ -8,6 +8,13 @@ First install [Node.js](http://nodejs.org/) and [Mongoose](https://www.npmjs.com
 npm install mongoose-encrypt-plugin
 ```
 
+## Compatibility
+
+| Plugin version | Mongoose | Node.js |
+| --- | --- | --- |
+| 1.x | 7.x, 8.x | as required by your Mongoose version |
+| 2.x (planned) | 9.x | >= 20.19 |
+
 # Quick Guide
 #### Basic Usage
 ```js
