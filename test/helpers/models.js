@@ -9,14 +9,21 @@ let counter = 0;
 /**
  * Build a fresh model with the plugin applied.
  * @param {Object} pluginOptions - extra plugin options (merged over fields + salt)
+ * @param {Object} [opts]
+ * @param {Object} [opts.schemaOptions] - extra mongoose schema options
+ * @param {Function} [opts.extend] - called with the schema before the plugin is applied
  */
-function buildModel(pluginOptions = {}) {
+function buildModel(pluginOptions = {}, { schemaOptions = {}, extend } = {}) {
     const schema = new mongoose.Schema({
         name: { type: String, required: true },
         email: { type: String },
         phone: { type: String, default: '' },
         address: { type: String, default: '' },
-    }, { timestamps: true });
+    }, { timestamps: true, ...schemaOptions });
+
+    if (extend) {
+        extend(schema);
+    }
 
     schema.plugin(MongooseEncryptPlugin, { fields: FIELDS, salt: SALT, ...pluginOptions });
 
@@ -24,4 +31,6 @@ function buildModel(pluginOptions = {}) {
     return mongoose.model(`EncryptTest${counter}`, schema);
 }
 
-module.exports = { buildModel, SALT, FIELDS };
+const sample = { name: 'A', email: 'a@example.com', phone: '0977777777', address: 'Ho Chi Minh City' };
+
+module.exports = { buildModel, sample, SALT, FIELDS };
