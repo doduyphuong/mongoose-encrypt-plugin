@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.10 - 2026-10-06
+
+### Changed
+
+- `mongoose` dependency range is widened to `^7.0.0 || ^8.0.0` (1.1.9 was published with `^8.24.5`), so projects on any Mongoose 7 or 8 release reuse their own Mongoose instead of installing a second copy. Tested with Mongoose 7.8, 8.7 and 8.24. Mongoose 9 is supported from 2.0.0.
+- README: compatibility table (1.x for Mongoose 7/8, 2.x for Mongoose 9).
+
+No code changes since 1.1.9.
+
 ## 1.1.9 - 2026-10-06
 
 ### Fixed
@@ -12,7 +21,6 @@
 
 ### Changed
 
-- `mongoose` dependency range is `^7.0.0 || ^8.0.0`, so projects on any Mongoose 7 or 8 release reuse their own Mongoose instead of installing a second copy. Tested with Mongoose 7.8, 8.7 and 8.24. Mongoose 9 is supported from 2.0.0.
 - Default behaviour is unchanged: with `validAccessData: false` (default) fields are always decrypted.
 - Tests now run with `npm test` (`node:test` + in-memory MongoDB, or `MONGO_URI`). The old script moved to `examples/demo.js` (`npm run demo`).
 - README documents `validAccessData`, `haveDataNotEncrypt`, the need to await queries inside `userContextStore.run()`, and the known limitations of v1.x.
