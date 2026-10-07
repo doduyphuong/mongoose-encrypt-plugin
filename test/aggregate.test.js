@@ -2,7 +2,6 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('./helpers/db');
 const { buildModel, sample } = require('./helpers/models');
-const { pending } = require('./helpers/pending');
 
 describe('aggregate', () => {
     let Model;
@@ -28,7 +27,7 @@ describe('aggregate', () => {
         assert.equal(rows[0].ivField, undefined);
     });
 
-    it('#13 the first $match on an encrypted field is rewritten', pending('GD 3'), async () => {
+    it('#13 the first $match on an encrypted field is rewritten', async () => {
         const rows = await Model.aggregate([{ $match: { email: 'agg2@example.com' } }]);
         assert.equal(rows.length, 1);
         assert.equal(rows[0].name, 'Agg2');

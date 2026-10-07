@@ -28,7 +28,3 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      # Bugs still pending in v2 are reported as TODO by `npm test`.
-      # This step lists which of them are still red without failing the build.
-      - run: npm run test:strict
-        continue-on-error: true

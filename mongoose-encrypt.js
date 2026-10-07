@@ -94,44 +94,134 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
     });
 
-    async function updateRecord() {
-        const update = this.getUpdate();
+    const has = (obj, key) => Boolean(obj) && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, key);
+    const isEncryptedPath = (path) => options.fields.some(f => path === f || String(path).startsWith(`${f}.`));
+    const WRITE_HINT = 'only $set, $setOnInsert and $unset (or a plain value) can write an encrypted field';
 
-        if (!update || Array.isArray(update)) {
-            return;
+    /** Reject an update pipeline that would write an encrypted field in plaintext. */
+    function checkUpdatePipeline(pipeline) {
+        for (const stage of pipeline) {
+            for (const [op, spec] of Object.entries(stage || {})) {
+                if (op === '$replaceRoot' || op === '$replaceWith') {
+                    throw new UnsupportedOperatorError(options.fields.join(', '), `update pipeline ${op}`, WRITE_HINT);
+                }
+
+                const paths = op === '$unset' ? [].concat(spec) : Object.keys(spec || {});
+
+                for (const path of paths) {
+                    if (isEncryptedPath(path)) {
+                        throw new UnsupportedOperatorError(path, `update pipeline ${op}`, WRITE_HINT);
+                    }
+                }
+            }
         }
+    }
 
+    /** Encrypt the values an update writes to encrypted fields and keep their search hash in sync. */
+    function encryptUpdate(update) {
         const { hashField, ivField, fields } = options;
-        const has = (obj, key) => obj && Object.prototype.hasOwnProperty.call(obj, key);
 
-        fields.forEach(field => {
-            if (!has(update, field) && !has(update.$set, field)) {
-                return;
+        for (const [op, spec] of Object.entries(update)) {
+            if (!op.startsWith('$') || !spec || typeof spec !== 'object') {
+                continue;
             }
 
+            for (const [path, value] of Object.entries(spec)) {
+                const allowed = ['$set', '$setOnInsert', '$unset'].includes(op) && fields.includes(path);
+
+                if ((isEncryptedPath(path) && !allowed) || (op === '$rename' && isEncryptedPath(String(value)))) {
+                    throw new UnsupportedOperatorError(path, op, WRITE_HINT);
+                }
+            }
+        }
+
+        fields.forEach(field => {
             // Move a top-level value into $set so the plaintext can never stay next to the ciphertext.
             if (has(update, field)) {
                 update.$set = { ...(update.$set || {}), [field]: update[field] };
                 delete update[field];
             }
 
-            const value = update.$set[field];
+            if (has(update.$unset, field)) {
+                update.$unset[`${hashField}.${field}`] = 1;
+                update.$unset[`${ivField}.${field}`] = 1;
+            }
 
-            update.$unset = { ...(update.$unset || {}), [`${ivField}.${field}`]: 1 };
+            for (const op of ['$set', '$setOnInsert']) {
+                if (!has(update[op], field)) {
+                    continue;
+                }
+
+                const value = update[op][field];
+
+                if (op === '$set') {
+                    // A new v2 value never needs the iv of a v1 value.
+                    update.$unset = { ...(update.$unset || {}), [`${ivField}.${field}`]: 1 };
+                }
+
+                if (value === undefined || value === null || value === '') {
+                    if (op === '$set') {
+                        // Value cleared: drop the stale hash so the old value can no longer be found.
+                        update.$unset[`${hashField}.${field}`] = 1;
+                    }
+                    continue;
+                }
+
+                const { stored, hash } = protect(value, field);
+
+                update[op][field] = stored;
+                update[op][`${hashField}.${field}`] = hash;
+            }
+        });
+
+        return update;
+    }
+
+    /** Query middleware for updateOne / updateMany / findOneAndUpdate. */
+    async function updateRecord() {
+        const update = this.getUpdate();
+
+        if (Array.isArray(update)) {
+            checkUpdatePipeline(update);
+        } else if (update && typeof update === 'object') {
+            this.setUpdate(encryptUpdate(update));
+        }
+    }
+
+    /** Encrypt the encrypted fields of a whole document (insertMany, replaceOne, findOneAndReplace). */
+    function encryptDocument(data) {
+        const { hashField, ivField, fields } = options;
+        const hashData = {};
+
+        fields.forEach(field => {
+            const value = data[field];
 
             if (value === undefined || value === null || value === '') {
-                // Value cleared: drop the stale hash so the old value can no longer be found.
-                update.$unset[`${hashField}.${field}`] = 1;
                 return;
             }
 
             const { stored, hash } = protect(value, field);
 
-            update.$set[field] = stored;
-            update.$set[`${hashField}.${field}`] = hash;
+            hashData[field] = hash;
+            data[field] = stored;
         });
 
-        this.setUpdate(update);
+        data[hashField] = hashData;
+
+        if (has(data, ivField)) {
+            delete data[ivField];
+        }
+
+        return data;
+    }
+
+    /** Query middleware for replaceOne / findOneAndReplace. */
+    async function replaceRecord() {
+        const replacement = this.getUpdate();
+
+        if (replacement && typeof replacement === 'object' && !Array.isArray(replacement)) {
+            this.setUpdate(encryptDocument(replacement));
+        }
     }
 
     const rewriteFilter = createFilterRewriter({
@@ -218,29 +308,36 @@ const MongooseEncryptPlugin = function (schema, options) {
         schema.index({ [`${options.hashField}.${field}`]: 1 }, { unique: true, sparse: true });
     });
 
-    schema.method('toJSON', function () {
-        let that = this;
-        const { hashField, ivField, hideIV, fields } = options;
-        const record = that;
-        const recordObject = record.toObject();
+    /** Remove hashField / ivField from a plain object and from its direct children. */
+    function stripInternalFields(ret) {
+        const { hashField, ivField } = options;
+        const strip = (obj) => {
+            if (obj && typeof obj === 'object') {
+                delete obj[hashField];
+                delete obj[ivField];
+            }
+        };
 
-        if (hideIV) {
-            delete recordObject[hashField];
-            delete recordObject[ivField];
+        strip(ret);
 
-            for (const key in recordObject) {
-                if (typeof (recordObject[key]) == 'object' && !Array.isArray(recordObject[key])) {
-                    const dataChild = recordObject[key];
-
-                    if (dataChild?.hasOwnProperty(hashField)) {
-                        delete dataChild[hashField];
-                        delete dataChild[ivField];
-                    }
-                }
+        for (const value of Object.values(ret)) {
+            if (Array.isArray(value)) {
+                value.forEach(strip);
+            } else {
+                strip(value);
             }
         }
 
-        return recordObject;
+        return ret;
+    }
+
+    // Keep Mongoose's own toJSON (schema toJSON options, virtuals, transform), then hide the internal fields.
+    const baseToJSON = mongoose.Document.prototype.toJSON;
+
+    schema.method('toJSON', function (toJSONOptions) {
+        const ret = baseToJSON.call(this, toJSONOptions);
+
+        return options.hideIV && ret && typeof ret === 'object' ? stripInternalFields(ret) : ret;
     });
 
     const FILTER_OPERATIONS = [
@@ -253,6 +350,50 @@ const MongooseEncryptPlugin = function (schema, options) {
     schema.pre(FILTER_OPERATIONS, processFilter);
     schema.pre(['find', 'findOne', 'findOneAndUpdate', 'findOneAndReplace', 'findOneAndDelete'], processProjection);
     schema.pre(['updateOne', 'updateMany', 'findOneAndUpdate'], updateRecord);
+    schema.pre(['replaceOne', 'findOneAndReplace'], replaceRecord);
+
+    // Rewrite the leading $match stages of an aggregation so they can filter on encrypted fields.
+    schema.pre('aggregate', async function () {
+        const pipeline = this.pipeline();
+
+        for (let i = 0; i < pipeline.length && pipeline[i] && pipeline[i].$match; i++) {
+            pipeline[i] = { ...pipeline[i], $match: rewriteFilter(pipeline[i].$match) };
+        }
+    });
+
+    // Fields whose stored value is v2 ciphertext while the document holds the decrypted value.
+    // They are not "modified", so save() leaves them untouched in the database.
+    const DECRYPTED = 'mongooseEncryptDecrypted';
+
+    /** Decrypt the encrypted fields of a document in place, without marking them as modified. */
+    function revealDocument(doc) {
+        const { ivField, fields } = options;
+
+        if (!canAccessField(options.validAccessData)) {
+            return;
+        }
+
+        const decrypted = doc.$locals[DECRYPTED] || (doc.$locals[DECRYPTED] = new Set());
+
+        fields.forEach(field => {
+            const value = doc.get(field);
+
+            if (typeof value !== 'string' || value === '') {
+                return;
+            }
+
+            const wasV2 = isEncrypted(value);
+            const iv = doc.get(ivField)?.[field] || '';
+
+            doc.set(field, reveal(value, field, iv));
+
+            if (wasV2) {
+                // A value decrypted from v1 (legacy) stays modified so the next save re-encrypts it with v2.
+                doc.unmarkModified(field);
+                decrypted.add(field);
+            }
+        });
+    }
 
     // encrypt data (create, save) before document store in the database
     schema.pre('save', async function () {
@@ -268,7 +409,9 @@ const MongooseEncryptPlugin = function (schema, options) {
 
             // An unchanged field that still holds the stored ciphertext
             // (e.g. the document was loaded without decryption rights): never encrypt it twice.
-            if (!doc.isNew && !doc.isModified(field) && (isEncrypted(value) || ivData[field])) {
+            const unchanged = !doc.isNew && !doc.isModified(field);
+
+            if (unchanged && (isEncrypted(value) || ivData[field] || doc.$locals[DECRYPTED]?.has(field))) {
                 return;
             }
 
@@ -290,58 +433,33 @@ const MongooseEncryptPlugin = function (schema, options) {
         doc.set(ivField, ivData);
     });
 
-    // Mongoose 7/8 call insertMany pre hooks with (next, docs), Mongoose 9 with (docs).
-    // `docs` is the array (or single object) passed to Model.insertMany().
-    schema.pre('insertMany', async function (arg0, arg1) {
-        const input = typeof arg0 === 'function' ? arg1 : arg0;
-        const docs = Array.isArray(input) ? input : (input && typeof input === 'object' ? [input] : []);
-        const { hashField, fields } = options;
+    // Mongoose 9 calls insertMany pre hooks with the array (or single object) passed to Model.insertMany().
+    schema.pre('insertMany', async function (docs) {
+        const list = Array.isArray(docs) ? docs : (docs && typeof docs === 'object' ? [docs] : []);
 
-        for (const data of docs) {
-            if (!data || typeof data !== 'object') {
-                continue; // let Mongoose report invalid input
+        for (const data of list) {
+            if (data && typeof data === 'object') {
+                encryptDocument(data); // invalid input is reported by Mongoose
             }
-
-            const hashData = {};
-
-            fields.forEach(field => {
-                const value = data[field];
-
-                if (value === undefined || value === null || value === '') {
-                    return;
-                }
-
-                const { stored, hash } = protect(value, field);
-
-                hashData[field] = hash;
-                data[field] = stored;
-            });
-
-            data[hashField] = hashData;
         }
     });
 
     schema.post('insertMany', async function (docs) {
-        if (Array.isArray(docs) && docs.length) {
-            const { ivField, fields } = options;
-            const canAccess = canAccessField(options.validAccessData);
+        if (!Array.isArray(docs)) {
+            return;
+        }
 
-            for (let i = 0; i < docs.length; i++) {
-                const doc = docs[i];
-
-                fields.forEach(field => {
-                    if (doc[field]) {
-                        // Check if user has permission to access this field
-                        if (canAccess) {
-                            const iv = doc?.[ivField]?.[field] || '';
-                            doc[field] = reveal(doc[field], field, iv);
-                        }
-                        // else not decrypt the field
-                    }
+        for (const doc of docs) {
+            if (doc instanceof mongoose.Document) {
+                revealDocument(doc);
+            } else if (doc && typeof doc === 'object' && canAccessField(options.validAccessData)) {
+                // lean: true
+                options.fields.forEach(field => {
+                    doc[field] = reveal(doc[field], field);
                 });
             }
         }
-    })
+    });
 
     schema.post('aggregate', function (docs) {
         if (Array.isArray(docs) && docs.length) {
@@ -353,39 +471,14 @@ const MongooseEncryptPlugin = function (schema, options) {
         }
     });
 
-    // encrypt data (create, save) before document store in the database
+    // decrypt the saved document so the caller gets plaintext back (when allowed)
     schema.post('save', function (doc) {
-        const { ivField, fields } = options;
-        const canAccess = canAccessField(options.validAccessData);
-
-        fields.forEach(field => {
-            if (doc[field]) {
-                // Check if user has permission to access this field
-                if (canAccess) {
-                    const iv = doc?.[ivField]?.[field] || '';
-                    doc[field] = reveal(doc[field].toString(), field, iv);
-                }
-                // else not decrypt the field
-            }
-        });
+        revealDocument(doc);
     });
 
-    // decrypt data when document return from mongoose query
+    // decrypt documents returned by queries (when allowed)
     schema.post('init', function (doc) {
-        const { hashField, ivField, fields } = options;
-        const canAccess = canAccessField(options.validAccessData);
-
-        if (canAccess) {
-            fields.forEach(field => {
-                if (doc[field]) {
-                    const iv = doc?.[ivField]?.[field] || '';
-                    doc[field] = reveal(doc[field].toString(), field, iv);
-                }
-            });
-        }
-
-        delete doc[hashField];
-        delete doc[ivField];
+        revealDocument(doc);
     });
 }
 

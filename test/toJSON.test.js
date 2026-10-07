@@ -2,7 +2,6 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('./helpers/db');
 const { buildModel, sample } = require('./helpers/models');
-const { pending } = require('./helpers/pending');
 
 describe('toJSON', () => {
     let Model;
@@ -32,7 +31,7 @@ describe('toJSON', () => {
         assert.equal(json.email, 'json@example.com');
     });
 
-    it('#16 keeps the schema toJSON options (virtuals, transform)', pending('GD 3'), async () => {
+    it('#16 keeps the schema toJSON options (virtuals, transform)', async () => {
         const created = await Model.create({ ...sample, name: 'V', email: 'virt@example.com' });
         const json = (await Model.findById(created._id)).toJSON();
         assert.equal(json.label, 'label:V');

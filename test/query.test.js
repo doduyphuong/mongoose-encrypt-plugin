@@ -2,7 +2,6 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('./helpers/db');
 const { buildModel, sample } = require('./helpers/models');
-const { pending } = require('./helpers/pending');
 
 const isUnsupported = (err) => err.name === 'UnsupportedOperatorError';
 const names = (docs) => docs.map(d => d.name).sort();

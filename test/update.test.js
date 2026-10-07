@@ -2,7 +2,6 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('./helpers/db');
 const { buildModel, sample } = require('./helpers/models');
-const { pending } = require('./helpers/pending');
 
 describe('updates', () => {
     let Model;
@@ -58,7 +57,7 @@ describe('updates', () => {
         assert.equal((await Model.findOneAndDelete({ email: 'd3@example.com' }))?.name, 'D3');
     });
 
-    it('#8 replaceOne encrypts the replacement document', pending('GD 3'), async () => {
+    it('#8 replaceOne encrypts the replacement document', async () => {
         const created = await Model.create({ ...sample, email: 'rep@example.com' });
         await Model.replaceOne({ _id: created._id }, { name: 'Replaced', email: 'replaced@example.com' });
 
@@ -67,7 +66,48 @@ describe('updates', () => {
         assert.equal((await Model.findById(created._id)).email, 'replaced@example.com');
     });
 
-    it('Mongoose 9: an update pipeline touching an encrypted field is rejected before reaching the DB', pending('GD 3'), async () => {
+    it('findOneAndReplace encrypts the replacement and returns it decrypted', async () => {
+        const created = await Model.create({ ...sample, email: 'far@example.com' });
+        const replaced = await Model.findOneAndReplace(
+            { email: 'far@example.com' },
+            { name: 'Far', email: 'far2@example.com' },
+            { returnDocument: 'after' },
+        );
+        assert.equal(replaced.email, 'far2@example.com');
+
+        const raw = await Model.collection.findOne({ _id: created._id });
+        assert.match(raw.email, /^v2:/);
+        assert.equal((await Model.find({ email: 'far2@example.com' })).length, 1);
+    });
+
+    it('$setOnInsert encrypts the value of an upserted document', async () => {
+        await Model.updateOne({ name: 'Upserted' }, { $setOnInsert: { email: 'ups@example.com' } }, { upsert: true });
+
+        const raw = await Model.collection.findOne({ name: 'Upserted' });
+        assert.match(raw.email, /^v2:/);
+        assert.equal((await Model.findOne({ email: 'ups@example.com' })).name, 'Upserted');
+    });
+
+    it('$unset on an encrypted field also removes its hash', async () => {
+        const created = await Model.create({ ...sample, email: 'unset@example.com' });
+        await Model.updateOne({ _id: created._id }, { $unset: { email: 1 } });
+
+        const raw = await Model.collection.findOne({ _id: created._id });
+        assert.equal(raw.email, undefined);
+        assert.equal(raw.hashField?.email, undefined);
+    });
+
+    it('other update operators on an encrypted field throw UnsupportedOperatorError', async () => {
+        const isUnsupported = (err) => err.name === 'UnsupportedOperatorError';
+        const created = await Model.create({ ...sample, email: 'ops@example.com' });
+
+        await assert.rejects(Model.updateOne({ _id: created._id }, { $push: { email: 'x' } }), isUnsupported);
+        await assert.rejects(Model.updateOne({ _id: created._id }, { $rename: { email: 'mail' } }), isUnsupported);
+        await assert.rejects(Model.updateOne({ _id: created._id }, { $rename: { name: 'email' } }), isUnsupported);
+        await assert.rejects(Model.updateOne({ _id: created._id }, { $set: { 'email.x': 'y' } }), isUnsupported);
+    });
+
+    it('Mongoose 9: an update pipeline touching an encrypted field is rejected before reaching the DB', async () => {
         const created = await Model.create({ ...sample, email: 'pipe@example.com' });
         await assert.rejects(
             Model.findOneAndUpdate({ _id: created._id }, [{ $set: { email: 'plain@example.com' } }], { updatePipeline: true }),

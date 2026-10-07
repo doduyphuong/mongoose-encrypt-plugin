@@ -30,6 +30,22 @@ describe('save / create', () => {
         assert.equal(raw.name, sample.name);
     });
 
+    it('a loaded document has no modified paths and an unchanged save keeps the ciphertext', async () => {
+        const created = await Model.create({ ...sample, email: 'clean@example.com' });
+        const before = await Model.collection.findOne({ _id: created._id });
+
+        const loaded = await Model.findById(created._id);
+        assert.equal(loaded.email, 'clean@example.com');
+        assert.deepEqual(loaded.modifiedPaths(), []);
+
+        loaded.name = 'Clean renamed';
+        await loaded.save();
+
+        const after = await Model.collection.findOne({ _id: created._id });
+        assert.equal(after.email, before.email, 'unchanged encrypted field is not rewritten');
+        assert.equal(after.name, 'Clean renamed');
+    });
+
     it('never encrypts an already encrypted value twice', async () => {
         const source = await Model.collection.findOne({}, { sort: { _id: 1 } });
         const copy = await Model.create({ name: 'Copy', email: source.email });
