@@ -45,35 +45,35 @@ describe('queries on encrypted fields', () => {
         assert.equal((await Model.findOne({ email: 'q2@example.com' })).name, 'Q2');
     });
 
-    it('#6 $in and $nin', pending('GD 2'), async () => {
+    it('#6 $in and $nin', async () => {
         assert.deepEqual(names(await Model.find({ email: { $in: ['q1@example.com', 'q3@example.com'] } })), ['Q1', 'Q3']);
         assert.deepEqual(names(await Model.find({ email: { $nin: ['q1@example.com'] } })), ['Q2', 'Q3']);
     });
 
-    it('#6 $exists matches documents that store a non-empty value', pending('GD 2'), async () => {
+    it('#6 $exists matches documents that store a non-empty value', async () => {
         assert.deepEqual(names(await Model.find({ phone: { $exists: true }, name: /^Q/ })), ['Q1', 'Q2']);
     });
 
-    it('#6 non-string values are matched by their string form', pending('GD 2'), async () => {
+    it('#6 non-string values are matched by their string form', async () => {
         assert.deepEqual(names(await Model.find({ phone: 111 })), ['Q1']);
     });
 
-    it('#6 $regex, RegExp and range operators throw UnsupportedOperatorError', pending('GD 2'), async () => {
+    it('#6 $regex, RegExp and range operators throw UnsupportedOperatorError', async () => {
         await assert.rejects(Model.find({ email: { $regex: 'q1' } }), isUnsupported);
         await assert.rejects(Model.find({ email: /q1/ }), isUnsupported);
         await assert.rejects(Model.find({ phone: { $gt: '100' } }), isUnsupported);
     });
 
-    it('#7 $and with two encrypted fields keeps AND semantics', pending('GD 2'), async () => {
+    it('#7 $and with two encrypted fields keeps AND semantics', async () => {
         const docs = await Model.find({ $and: [{ email: 'q1@example.com' }, { phone: '222' }] });
         assert.equal(docs.length, 0);
     });
 
-    it('#9 $regex inside $or throws instead of silently matching nothing', pending('GD 2'), async () => {
+    it('#9 $regex inside $or throws instead of silently matching nothing', async () => {
         await assert.rejects(Model.find({ $or: [{ email: { $regex: 'q1@example.com' } }] }), isUnsupported);
     });
 
-    it('#10 every key of an $or branch is rewritten, also when nested', pending('GD 2'), async () => {
+    it('#10 every key of an $or branch is rewritten, also when nested', async () => {
         assert.deepEqual(names(await Model.find({ $or: [{ name: 'Q1', email: 'q1@example.com' }] })), ['Q1']);
         assert.deepEqual(
             names(await Model.find({ $and: [{ $or: [{ email: 'q1@example.com' }, { email: 'q2@example.com' }] }, { name: { $ne: 'Q2' } }] })),
@@ -81,7 +81,24 @@ describe('queries on encrypted fields', () => {
         );
     });
 
-    it('#11 an exclusion projection works', pending('GD 2'), async () => {
+    it('$nor on an encrypted field', async () => {
+        assert.deepEqual(names(await Model.find({ $nor: [{ email: 'q1@example.com' }, { email: 'q2@example.com' }] })), ['Q3']);
+    });
+
+    it('an inclusion projection still returns decrypted values', async () => {
+        const [doc] = await Model.find({ name: 'Q2' }, { name: 1, email: 1 });
+        assert.equal(doc.email, 'q2@example.com');
+        assert.equal(doc.phone, undefined);
+    });
+
+    it('does not modify the filter object passed by the caller', async () => {
+        const filter = { email: 'q1@example.com', $or: [{ phone: '111' }] };
+        const copy = JSON.parse(JSON.stringify(filter));
+        await Model.find(filter);
+        assert.deepEqual(filter, copy);
+    });
+
+    it('#11 an exclusion projection works', async () => {
         const [doc] = await Model.find({ name: 'Q1' }, { address: 0 });
         assert.equal(doc.email, 'q1@example.com');
         assert.equal(doc.address, undefined);
@@ -107,7 +124,16 @@ describe('#7 haveDataNotEncrypt keeps the user $or intact', () => {
         assert.deepEqual(names(await Model.find({ email: 'h2@example.com' })), ['H2']);
     });
 
-    it('#7 a top-level encrypted condition is ANDed with the user $or', pending('GD 2'), async () => {
+    it('$in matches both encrypted and plaintext documents', async () => {
+        assert.deepEqual(names(await Model.find({ email: { $in: ['h1@example.com', 'h2@example.com'] } })), ['H1', 'H2']);
+    });
+
+    it('$ne excludes the value whether it is encrypted or not', async () => {
+        assert.deepEqual(names(await Model.find({ email: { $ne: 'h1@example.com' } })), ['H2']);
+        assert.deepEqual(names(await Model.find({ email: { $ne: 'h2@example.com' } })), ['H1']);
+    });
+
+    it('#7 a top-level encrypted condition is ANDed with the user $or', async () => {
         const docs = await Model.find({ email: 'h1@example.com', $or: [{ name: 'H2' }, { name: 'nobody' }] });
         assert.equal(docs.length, 0);
     });

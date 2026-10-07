@@ -35,19 +35,19 @@ describe('updates', () => {
         assert.equal((await Model.findById(created._id)).address, 'Hue');
     });
 
-    it('#5 clearing a field with updateOne removes its stale hash', pending('GD 1'), async () => {
+    it('#5 clearing a field with updateOne removes its stale hash', async () => {
         const created = await Model.create({ ...sample, email: 'stale@example.com' });
         await Model.updateOne({ _id: created._id }, { $set: { email: '' } });
         assert.equal((await Model.find({ email: 'stale@example.com' })).length, 0);
     });
 
-    it('#8 updateOne / updateMany match a filter on an encrypted field', pending('GD 2'), async () => {
+    it('#8 updateOne / updateMany match a filter on an encrypted field', async () => {
         await Model.create({ ...sample, name: 'F1', email: 'filter@example.com' });
         assert.equal((await Model.updateOne({ email: 'filter@example.com' }, { name: 'F1b' })).matchedCount, 1);
         assert.equal((await Model.updateMany({ email: 'filter@example.com' }, { name: 'F1c' })).matchedCount, 1);
     });
 
-    it('#8 deleteOne / deleteMany / findOneAndDelete match a filter on an encrypted field', pending('GD 2'), async () => {
+    it('#8 deleteOne / deleteMany / findOneAndDelete match a filter on an encrypted field', async () => {
         await Model.create([
             { ...sample, name: 'D1', email: 'd1@example.com' },
             { ...sample, name: 'D2', email: 'd2@example.com' },

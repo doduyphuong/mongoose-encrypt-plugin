@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const db = require('./helpers/db');
 const { buildModel, sample } = require('./helpers/models');
-const { pending } = require('./helpers/pending');
 
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('base64');
 
@@ -19,15 +18,25 @@ describe('save / create', () => {
         await db.disconnect();
     });
 
-    it('stores ciphertext, hash and iv in the database', async () => {
+    it('stores AES-256-GCM ciphertext and a search hash in the database', async () => {
         const doc = await Model.create(sample);
         const raw = await Model.collection.findOne({ _id: doc._id });
 
         for (const field of ['email', 'phone', 'address']) {
-            assert.notEqual(raw[field], sample[field], `${field} must not be stored in plaintext`);
+            assert.match(raw[field], /^v2:[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$/, `${field} must be stored as v2 ciphertext`);
             assert.ok(raw.hashField[field], `hashField.${field} missing`);
+            assert.equal(raw.ivField?.[field], undefined, 'v2 values keep their iv inside the ciphertext');
         }
         assert.equal(raw.name, sample.name);
+    });
+
+    it('never encrypts an already encrypted value twice', async () => {
+        const source = await Model.collection.findOne({}, { sort: { _id: 1 } });
+        const copy = await Model.create({ name: 'Copy', email: source.email });
+        const raw = await Model.collection.findOne({ _id: copy._id });
+
+        assert.equal(raw.email, source.email);
+        assert.equal(raw.hashField.email, source.hashField.email);
     });
 
     it('returns decrypted values from create()', async () => {
@@ -68,7 +77,7 @@ describe('save / create', () => {
         assert.equal((await Model.find({ email: 'clear@example.com' })).length, 0);
     });
 
-    it('#2 the search hash is keyed (not a plain SHA-256 of the value)', pending('GD 1'), async () => {
+    it('#2 the search hash is keyed (not a plain SHA-256 of the value)', async () => {
         const doc = await Model.create({ ...sample, email: 'keyed@example.com' });
         const raw = await Model.collection.findOne({ _id: doc._id });
         assert.notEqual(raw.hashField.email, sha256('keyed@example.com'));
@@ -88,7 +97,7 @@ describe('#4 unique encrypted fields', () => {
         await db.disconnect();
     });
 
-    it('#4 rejects a second document with the same email', pending('GD 1'), async () => {
+    it('#4 rejects a second document with the same email', async () => {
         await Model.create({ ...sample, email: 'dup@example.com' });
         await assert.rejects(Model.create({ ...sample, email: 'dup@example.com' }), /duplicate key|E11000/);
     });

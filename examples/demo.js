@@ -15,7 +15,6 @@ const TestSchema = new mongoose.Schema(
         email: {
             type: String,
             required: true,
-            unique: true,
         },
         address: {
             type: String,
@@ -28,10 +27,16 @@ const TestSchema = new mongoose.Schema(
     }
 );
 
-const SALT = 'vZYt@CAkuMKB9Z#SHZF4d7puRt!MhCiK';
+// Keys are 32 bytes each. In a real app load them from the environment / a secret manager,
+// e.g. generated once with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || Buffer.alloc(32, 1).toString('base64');
+const HASH_KEY = process.env.HASH_KEY || Buffer.alloc(32, 2).toString('base64');
+
 TestSchema.plugin(MongooseEncryptPlugin, {
     fields: ['email', 'phone', 'address'],
-    salt: SALT,
+    encryptionKey: ENCRYPTION_KEY,
+    hashKey: HASH_KEY,
+    unique: ['email'],
     validAccessData: true
 });
 const TestModel = mongoose.model('test', TestSchema);
@@ -78,7 +83,7 @@ const updateDataWithDecryption = async (id, updateData, decrypt = true) => {
     return new Promise(async (resolve) => {
         userContextStore.run({ isShowDecrypted: decrypt }, async () => {
             try {
-                const data = await TestModel.findByIdAndUpdate(id, { $set: updateData }, { new: true }).exec();
+                const data = await TestModel.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: 'after' }).exec();
                 resolve(data);
             } catch (error) {
                 console.error('error: ', error);

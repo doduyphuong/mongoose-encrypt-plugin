@@ -32,7 +32,7 @@ describe('permission-based decryption (validAccessData: true)', () => {
     it('keeps ciphertext when isShowDecrypted is false', async () => {
         const doc = await asUser(false, () => Model.findById(id));
         assert.notEqual(doc.email, sample.email);
-        assert.match(doc.email, /^[0-9a-f]+$/);
+        assert.match(doc.email, /^v2:/);
     });
 
     it('keeps ciphertext when no context is set', async () => {
