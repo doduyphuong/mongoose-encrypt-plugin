@@ -27,6 +27,11 @@ describe('aggregate', () => {
         assert.equal(rows[0].ivField, undefined);
     });
 
+    it('decrypts the encrypted fields kept by a $project', async () => {
+        const rows = await Model.aggregate([{ $match: { name: 'Agg1' } }, { $project: { email: 1 } }]);
+        assert.equal(rows[0].email, 'agg1@example.com');
+    });
+
     it('#13 the first $match on an encrypted field is rewritten', async () => {
         const rows = await Model.aggregate([{ $match: { email: 'agg2@example.com' } }]);
         assert.equal(rows.length, 1);

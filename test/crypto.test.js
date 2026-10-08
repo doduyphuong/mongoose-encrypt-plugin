@@ -53,6 +53,12 @@ describe('#14 options are validated when the plugin is applied', () => {
         );
     });
 
+    it('rejects an encrypted field that is not a top-level String path', () => {
+        const keys = { encryptionKey: ENCRYPTION_KEY, hashKey: HASH_KEY };
+        assert.throws(() => apply(keys, { email: Number }), /only String fields/);
+        assert.throws(() => apply(keys, { mail: String }), /not a top-level path/);
+    });
+
     it('rejects invalid unique / onDecryptError / legacy options', () => {
         const keys = { encryptionKey: ENCRYPTION_KEY, hashKey: HASH_KEY };
         assert.throws(() => apply({ ...keys, unique: ['phone'] }), OptionsError);

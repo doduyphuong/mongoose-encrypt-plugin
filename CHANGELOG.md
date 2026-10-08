@@ -23,6 +23,8 @@ Version 2 targets **Mongoose 9** (Node.js >= 20.19). Mongoose 7/8 users stay on 
 - Search, update and delete by encrypted fields in `updateOne`, `updateMany`, `findOneAndUpdate`, `replaceOne`, `findOneAndReplace`, `deleteOne`, `deleteMany`, `findOneAndDelete`, `distinct` and the leading `$match` stages of `aggregate`.
 - `$in`, `$nin`, `$exists` and `$nor` on encrypted fields; values are compared by their string form.
 - `$setOnInsert` is encrypted; `$unset` of an encrypted field removes its hash; `replaceOne` / `findOneAndReplace` encrypt the replacement.
+- `bulkWrite()` (and `bulkSave()`): every `insertOne`, `updateOne`, `updateMany` and `replaceOne` is encrypted and every filter is rewritten.
+- Encrypted fields must be top-level `String` paths of the schema; anything else throws an `OptionsError`.
 
 ### Fixed
 
@@ -33,6 +35,7 @@ Version 2 targets **Mongoose 9** (Node.js >= 20.19). Mongoose 7/8 users stay on 
 - `toJSON()` ignored the schema `toJSON` options (virtuals, transform).
 - Update pipelines (`updatePipeline: true`) could write plaintext.
 - A document loaded from the database had all its encrypted fields marked as modified.
+- `aggregate()` only decrypted results that still contained `hashField` (a `$project` returned ciphertext).
 
 ### Removed
 

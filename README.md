@@ -86,7 +86,7 @@ Invalid options throw an `OptionsError` when the plugin is applied, with a messa
 
 ## Queries
 
-Encrypted fields can be used in the filters of `find`, `findOne`, `countDocuments`, `distinct`, `updateOne`, `updateMany`, `findOneAndUpdate`, `replaceOne`, `findOneAndReplace`, `deleteOne`, `deleteMany`, `findOneAndDelete`, and in the leading `$match` stages of `aggregate`. Conditions can be nested in `$and`, `$or` and `$nor`.
+Encrypted fields can be used in the filters of `find`, `findOne`, `countDocuments`, `distinct`, `updateOne`, `updateMany`, `findOneAndUpdate`, `replaceOne`, `findOneAndReplace`, `deleteOne`, `deleteMany`, `findOneAndDelete`, of every `bulkWrite` operation, and in the leading `$match` stages of `aggregate`. Conditions can be nested in `$and`, `$or` and `$nor`.
 
 | Operator on an encrypted field | Supported |
 | --- | --- |
@@ -98,6 +98,7 @@ The hash only allows exact matches: there is no partial, case-insensitive or ran
 
 ## Updates
 
+- `save()`, `create()`, `insertMany()`, `replaceOne()`, `findOneAndReplace()`, `bulkWrite()` and `bulkSave()` encrypt every write.
 - A plain value, `$set` and `$setOnInsert` are encrypted and their hash is updated.
 - `$unset` (or setting `''` / `null`) also removes the hash, so the old value can no longer be found.
 - `$push`, `$inc`, `$rename`, paths inside an encrypted field (`'email.x'`) throw `UnsupportedOperatorError`.
@@ -140,7 +141,9 @@ All of them extend `MongooseEncryptError` and are exported by the package.
 
 ## Limitations
 
-- Only top-level `String` paths can be encrypted (no nested paths, arrays, numbers, dates or UUIDs).
+- Only top-level `String` paths can be encrypted (no nested paths, arrays, numbers, dates or UUIDs); other paths throw an `OptionsError`. Apply the plugin after the fields are defined.
+- `aggregate()` decrypts the encrypted fields under their own name only; a field renamed in a `$project` / `$group` keeps its ciphertext.
+- `toJSON()` hides `hashField` / `ivField`; `toObject()` keeps them (Mongoose uses it internally).
 - The search hash is deterministic: two documents with the same value have the same hash, so someone who can read the database can see which documents share a value (but not the value itself).
 - Keep both keys secret. Losing `encryptionKey` makes the data unreadable; changing `hashKey` requires recomputing every hash.
 - `distinct()` on an encrypted field returns ciphertexts.

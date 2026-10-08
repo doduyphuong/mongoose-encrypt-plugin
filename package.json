@@ -10,7 +10,8 @@
     "mongoose-encrypt.js",
     "src/",
     "CHANGELOG.md",
-    "UPGRADING.md"
+    "UPGRADING.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20.19.0"
