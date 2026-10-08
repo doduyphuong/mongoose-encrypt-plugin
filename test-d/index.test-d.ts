@@ -10,7 +10,7 @@ import {
     migrateV1,
     type MigrateResult,
     type MongooseEncryptOptions,
-} from '../..';
+} from '..';
 
 const schema = new Schema({ name: String, email: String });
 
