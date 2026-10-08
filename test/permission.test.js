@@ -2,7 +2,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('./helpers/db');
 const { buildModel } = require('./helpers/models');
-const { userContextStore } = require('../mongoose-encrypt');
+const { userContextStore, runWithDecryption, isDecryptionAllowed, getCurrentUserRole } = require('../mongoose-encrypt');
 
 const sample = { name: 'P', email: 'p@example.com', phone: '0911111111', address: 'Da Nang' };
 
@@ -159,5 +159,31 @@ describe('re-saving without decryption rights must not corrupt data', () => {
         });
 
         assert.equal((await Model.find({ email: 'gone@example.com' })).length, 0);
+    });
+});
+
+describe('runWithDecryption helper', () => {
+    let Model;
+
+    before(async () => {
+        await db.connect();
+        Model = buildModel({ validAccessData: true });
+    });
+
+    after(async () => {
+        await db.disconnect();
+    });
+
+    it('runs a lazy query inside the context', async () => {
+        const created = await runWithDecryption(true, () => Model.create({ ...sample, email: 'helper@example.com' }));
+        assert.equal((await runWithDecryption(true, () => Model.findById(created._id))).email, 'helper@example.com');
+        assert.notEqual((await runWithDecryption(false, () => Model.findById(created._id))).email, 'helper@example.com');
+    });
+
+    it('isDecryptionAllowed() and the deprecated getCurrentUserRole() follow the context', async () => {
+        assert.equal(isDecryptionAllowed(), false);
+        assert.equal(await runWithDecryption(true, () => isDecryptionAllowed()), true);
+        assert.equal(await runWithDecryption(true, () => getCurrentUserRole()), true);
+        assert.equal(await runWithDecryption(false, () => isDecryptionAllowed()), false);
     });
 });

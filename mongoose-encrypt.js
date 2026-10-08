@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 const { normalizeOptions } = require('./src/options');
-const { isEncrypted, encrypt, decrypt, blindIndex, decryptLegacy } = require('./src/crypto');
-const { userContextStore, getCurrentUserRole, canAccessField } = require('./src/access');
-const { OptionsError, DecryptionError, UnsupportedOperatorError } = require('./src/errors');
+const { isEncrypted, encrypt, decrypt, blindIndex, legacyHash, decryptLegacy } = require('./src/crypto');
+const { userContextStore, isDecryptionAllowed, getCurrentUserRole, runWithDecryption, canAccessField } = require('./src/access');
+const { MongooseEncryptError, OptionsError, DecryptionError, UnsupportedOperatorError } = require('./src/errors');
 const { createFilterRewriter } = require('./src/query');
 
 /**
@@ -31,7 +31,7 @@ const { createFilterRewriter } = require('./src/query');
  * - [ivField] string - defaults to `ivField` (only used by data written by v1)
  * - [hideIV] bool - defaults to true
  * - [haveDataNotEncrypt] bool - defaults to false. If true, queries also match plaintext values
- * - [validAccessData] bool - defaults to false. If true, values are decrypted only when allowed by `userContextStore`
+ * - [validAccessData] bool - defaults to false. If true, values are decrypted only inside `runWithDecryption(true, fn)`
  *
  * @param {Schema} schema - The mongoose schema
  * @param {Object} options - The plugin options
@@ -40,6 +40,8 @@ const MongooseEncryptPlugin = function (schema, options) {
     options = normalizeOptions(options);
 
     const hashValue = (value) => blindIndex(value, options.hashKey);
+    // While data written by v1 is being migrated, a stored hash can still be its v1 SHA-256.
+    const hashValues = (value) => (options.legacy ? [hashValue(value), legacyHash(value)] : [hashValue(value)]);
 
     /**
      * Prepare a value for storage: its ciphertext and its search hash.
@@ -228,7 +230,7 @@ const MongooseEncryptPlugin = function (schema, options) {
         fields: options.fields,
         hashField: options.hashField,
         haveDataNotEncrypt: options.haveDataNotEncrypt,
-        hashValue,
+        hashValues,
     });
 
     /** Query middleware: conditions on encrypted fields are rewritten to target their search hash. */
@@ -340,6 +342,119 @@ const MongooseEncryptPlugin = function (schema, options) {
         return options.hideIV && ret && typeof ret === 'object' ? stripInternalFields(ret) : ret;
     });
 
+    /**
+     * Re-encrypt, in batches, the documents still holding values written by plugin v1 (or plaintext).
+     * Works directly on the collection: no middleware, no decryption rights needed. Safe to run again.
+     * Exposed as `Model.migrateEncryption(opts)` and `migrateV1(Model, opts)`.
+     *
+     * @param {Object} [opts]
+     * @param {number} [opts.batchSize=500]
+     * @param {boolean} [opts.dryRun=false] - count and check only, write nothing
+     * @param {boolean} [opts.includePlaintext=false] - also encrypt values still stored in plaintext
+     * @param {(stats: Object) => void} [opts.onProgress] - called after each batch
+     * @returns {Promise<{ scanned: number, migrated: number, failed: Array<{ _id: *, field: string, error: string }>, dryRun: boolean }>}
+     */
+    schema.static('migrateEncryption', async function migrateEncryption(opts = {}) {
+        const { batchSize = 500, dryRun = false, includePlaintext = false, onProgress } = opts;
+        const { hashField, ivField, fields, legacy } = options;
+
+        if (!legacy && !includePlaintext) {
+            throw new OptionsError('Migrating data written by v1 needs the "legacy: { salt, algorithm }" option (or includePlaintext: true)');
+        }
+
+        const pending = [{ [ivField]: { $exists: true } }];
+
+        if (includePlaintext) {
+            fields.forEach(field => {
+                pending.push({ [field]: { $type: 'string', $ne: '' }, [`${hashField}.${field}`]: { $exists: false } });
+            });
+        }
+
+        const stats = { scanned: 0, migrated: 0, failed: [], dryRun };
+        let lastId = null;
+
+        for (;;) {
+            const filter = { $or: pending };
+
+            if (lastId !== null) {
+                filter._id = { $gt: lastId };
+            }
+
+            const docs = await this.collection.find(filter).sort({ _id: 1 }).limit(batchSize).toArray();
+
+            if (!docs.length) {
+                break;
+            }
+
+            const operations = [];
+
+            for (const doc of docs) {
+                const $set = {};
+                const guard = { _id: doc._id };
+
+                try {
+                    for (const field of fields) {
+                        const value = doc[field];
+
+                        if (typeof value !== 'string' || value === '' || isEncrypted(value)) {
+                            continue;
+                        }
+
+                        const iv = doc[ivField]?.[field];
+
+                        if (!iv && !includePlaintext) {
+                            continue;
+                        }
+
+                        let plain;
+
+                        try {
+                            plain = iv ? decryptLegacy(value, iv, legacy) : value;
+                        } catch (error) {
+                            throw new DecryptionError(field, error);
+                        }
+
+                        $set[field] = encrypt(plain, options.encryptionKey);
+                        $set[`${hashField}.${field}`] = hashValue(plain);
+                        guard[field] = value; // skip the document if it changed meanwhile
+                    }
+                } catch (error) {
+                    stats.failed.push({ _id: doc._id, field: error.field, error: error.message });
+                    continue;
+                }
+
+                const update = {};
+
+                if (Object.keys($set).length) {
+                    update.$set = $set;
+                }
+
+                if (doc[ivField] !== undefined) {
+                    update.$unset = { [ivField]: 1 };
+                }
+
+                if (Object.keys(update).length) {
+                    operations.push({ updateOne: { filter: guard, update } });
+                }
+            }
+
+            stats.scanned += docs.length;
+            stats.migrated += operations.length;
+
+            if (!dryRun && operations.length) {
+                await this.collection.bulkWrite(operations, { ordered: false });
+            }
+
+            lastId = docs.at(-1)._id;
+
+            if (onProgress) {
+                onProgress({ ...stats, failed: [...stats.failed] });
+            }
+        }
+
+        return stats;
+    });
+
     const FILTER_OPERATIONS = [
         'find', 'findOne', 'countDocuments', 'distinct',
         'updateOne', 'updateMany', 'findOneAndUpdate',
@@ -430,7 +545,8 @@ const MongooseEncryptPlugin = function (schema, options) {
         });
 
         doc.set(hashField, hashData);
-        doc.set(ivField, ivData);
+        // ivField only exists while the document still holds values written by v1.
+        doc.set(ivField, Object.keys(ivData).length ? ivData : undefined);
     });
 
     // Mongoose 9 calls insertMany pre hooks with the array (or single object) passed to Model.insertMany().
@@ -482,10 +598,27 @@ const MongooseEncryptPlugin = function (schema, options) {
     });
 }
 
+/**
+ * Re-encrypt the documents of `Model` still holding values written by plugin v1.
+ * @param {import('mongoose').Model} Model - a model whose schema uses MongooseEncryptPlugin with the `legacy` option
+ * @param {Object} [opts] - see `Model.migrateEncryption()`
+ */
+function migrateV1(Model, opts) {
+    if (typeof Model?.migrateEncryption !== 'function') {
+        throw new OptionsError('migrateV1() expects a model whose schema uses MongooseEncryptPlugin');
+    }
+
+    return Model.migrateEncryption(opts);
+}
+
 module.exports = {
     MongooseEncryptPlugin,
+    migrateV1,
     userContextStore,
+    runWithDecryption,
+    isDecryptionAllowed,
     getCurrentUserRole,
+    MongooseEncryptError,
     OptionsError,
     DecryptionError,
     UnsupportedOperatorError,

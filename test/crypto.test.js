@@ -129,7 +129,7 @@ describe('legacy: data written by plugin v1', () => {
         await doc.save();
         const raw = await Model.collection.findOne({ _id: insertedId });
         assert.match(raw.email, /^v2:/);
-        assert.equal(raw.ivField?.email, undefined);
+        assert.equal(raw.ivField, undefined, 'ivField is removed once no v1 value is left');
         assert.equal((await Model.find({ email: 'old@example.com' })).length, 1);
     });
 });

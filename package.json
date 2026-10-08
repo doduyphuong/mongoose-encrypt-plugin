@@ -1,20 +1,32 @@
 {
   "name": "mongoose-encrypt-plugin",
-  "version": "1.1.9",
-  "description": "Encrypt data before data document store in the database",
+  "version": "2.0.0-beta.0",
+  "description": "Mongoose plugin that encrypts fields with AES-256-GCM and keeps them searchable by equality (keyed blind index)",
   "main": "index.js",
+  "types": "index.d.ts",
   "files": [
     "index.js",
+    "index.d.ts",
     "mongoose-encrypt.js",
     "src/",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "UPGRADING.md"
   ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "test": "node --test",
+    "test:types": "tsd",
     "demo": "node examples/demo.js"
   },
   "keywords": [
     "mongoose",
+    "mongoose-plugin",
+    "encryption",
+    "field-level-encryption",
+    "aes-256-gcm",
+    "blind-index",
     "mongoose-encrypt-plugin",
     "mongoose-encrypt"
   ],
@@ -24,12 +36,16 @@
   },
   "author": "Do Duy Phuong <doduyphuong433@gmail.com>",
   "license": "ISC",
-  "dependencies": {
-    "lodash": "^4.17.21",
-    "mongoose": "^9.11.0"
+  "peerDependencies": {
+    "mongoose": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
-    "mongodb-memory-server-core": "^10.4.3"
+    "mongodb-memory-server-core": "^10.4.3",
+    "mongoose": "^9.11.0",
+    "tsd": "^0.31.2"
+  },
+  "tsd": {
+    "directory": "test/types"
   }
 }

@@ -31,21 +31,34 @@ function isOperatorObject(value) {
  * @param {string[]} ctx.fields - encrypted fields
  * @param {string} ctx.hashField
  * @param {boolean} ctx.haveDataNotEncrypt
- * @param {(value: *) => string} ctx.hashValue
+ * @param {(value: *) => string[]} ctx.hashValues - every hash a stored value may have
+ *   (the v2 HMAC, plus the v1 SHA-256 while data written by v1 is being migrated)
  */
-function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValue }) {
-    const hashOf = (value) => (value === null || value === undefined ? value : hashValue(value));
+function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValues }) {
+    const hashesOf = (value) => (value === null || value === undefined ? [value] : hashValues(value));
 
     /** Rewrite one operator (or a plain value) of an encrypted field into a condition on its hash. */
     function hashCondition(field, op, value) {
         switch (op) {
             case null:
             case '$eq':
-            case '$ne':
+            case '$ne': {
                 if (value instanceof RegExp) {
                     throw new UnsupportedOperatorError(field, '$regex');
                 }
-                return op ? { [op]: hashOf(value) } : hashOf(value);
+
+                const hashes = hashesOf(value);
+
+                if (op === '$ne') {
+                    return hashes.length === 1 ? { $ne: hashes[0] } : { $nin: hashes };
+                }
+
+                if (hashes.length > 1) {
+                    return { $in: hashes };
+                }
+
+                return op ? { $eq: hashes[0] } : hashes[0];
+            }
             case '$in':
             case '$nin':
                 if (!Array.isArray(value)) {
@@ -54,7 +67,7 @@ function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValue
                 if (value.some(v => v instanceof RegExp)) {
                     throw new UnsupportedOperatorError(field, '$regex');
                 }
-                return { [op]: value.map(hashOf) };
+                return { [op]: value.flatMap(hashesOf) };
             case '$exists':
                 return { $exists: Boolean(value) };
             default:
@@ -77,26 +90,8 @@ function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValue
         const parts = splitCondition(field, condition);
 
         if (!haveDataNotEncrypt) {
-            const merged = {};
-            let plain;
-
-            for (const [op, value] of parts) {
-                const hashed = hashCondition(field, op, value);
-
-                if (op === null) {
-                    plain = hashed;
-                } else {
-                    Object.assign(merged, hashed);
-                }
-            }
-
-            if (plain !== undefined) {
-                return Object.keys(merged).length
-                    ? [{ [hashPath]: plain }, { [hashPath]: merged }]
-                    : [{ [hashPath]: plain }];
-            }
-
-            return [{ [hashPath]: merged }];
+            // One clause per operator: two operators can map to the same one on the hash ($eq and $in -> $in).
+            return parts.map(([op, value]) => ({ [hashPath]: hashCondition(field, op, value) }));
         }
 
         return parts.map(([op, value]) => {

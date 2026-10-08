@@ -63,6 +63,15 @@ function blindIndex(value, key) {
 }
 
 /**
+ * Search hash written by plugin v1 (unkeyed SHA-256). Only used to find v1 documents until they are migrated.
+ * @param {*} value - converted with String()
+ * @returns {string} base64 SHA-256
+ */
+function legacyHash(value) {
+    return crypto.createHash('sha256').update(String(value), 'utf8').digest('base64');
+}
+
+/**
  * Decrypt a value written by plugin v1 (AES-256-CTR/CBC, iv stored in `ivField`).
  * @param {string} value - hex ciphertext
  * @param {string} iv - hex iv
@@ -74,4 +83,4 @@ function decryptLegacy(value, iv, legacy) {
     return Buffer.concat([decipher.update(Buffer.from(value, 'hex')), decipher.final()]).toString();
 }
 
-module.exports = { PREFIX, isEncrypted, encrypt, decrypt, blindIndex, decryptLegacy };
+module.exports = { PREFIX, isEncrypted, encrypt, decrypt, blindIndex, legacyHash, decryptLegacy };
