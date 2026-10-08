@@ -31,6 +31,15 @@ Generate two different 32-byte keys once and keep them in your secret manager / 
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
+## Compatibility
+
+| Plugin version | Mongoose | Node.js |
+| --- | --- | --- |
+| 1.x | 7.x, 8.x | as required by your Mongoose version |
+| 2.x (planned) | 9.x | >= 20.19 |
+
+# Quick Guide
+#### Basic Usage
 ```js
 const mongoose = require('mongoose');
 const { MongooseEncryptPlugin } = require('mongoose-encrypt-plugin');

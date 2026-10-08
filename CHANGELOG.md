@@ -41,6 +41,14 @@ Version 2 targets **Mongoose 9** (Node.js >= 20.19). Mongoose 7/8 users stay on 
 
 - `lodash` dependency, `helpers/hash.js`, the `count` query hook (removed from Mongoose).
 - `getCurrentUserRole()` is deprecated in favour of `isDecryptionAllowed()`.
+## 1.1.10 - 2026-10-06
+
+### Changed
+
+- `mongoose` dependency range is widened to `^7.0.0 || ^8.0.0` (1.1.9 was published with `^8.24.5`), so projects on any Mongoose 7 or 8 release reuse their own Mongoose instead of installing a second copy. Tested with Mongoose 7.8, 8.7 and 8.24. Mongoose 9 is supported from 2.0.0.
+- README: compatibility table (1.x for Mongoose 7/8, 2.x for Mongoose 9).
+
+No code changes since 1.1.9.
 
 ## 1.1.9 - 2026-10-06
 
