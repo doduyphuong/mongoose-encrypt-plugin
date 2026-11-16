@@ -15,6 +15,18 @@ npm install mongoose-encrypt-plugin
 | 1.x | 7.x, 8.x | as required by your Mongoose version |
 | 2.x (planned) | 9.x | >= 20.19 |
 
+## Security
+
+The plugin runs every query through your application's Mongoose. Keep Mongoose up to date: releases before **7.8.13** (7.x) and **8.24.7** (8.x) have known vulnerabilities, including [GHSA-8332-j7wj-wjw4](https://github.com/advisories/GHSA-8332-j7wj-wjw4), [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c), [GHSA-6972-9mcm-vhwj](https://github.com/advisories/GHSA-6972-9mcm-vhwj) and [GHSA-wr5m-5jph-8m96](https://github.com/advisories/GHSA-wr5m-5jph-8m96).
+
+```bash
+npm install mongoose@^8.24.7   # or mongoose@^7.8.13
+```
+
+From 1.1.11 the plugin emits a `SecurityWarning` (code `MONGOOSE_ENCRYPT_VULNERABLE_MONGOOSE`) once per process when it is applied to a schema of an affected Mongoose release. Upgrading Mongoose removes the warning.
+
+Encrypted fields work with `sanitizeFilter`: query operators sent by users are still neutralised after the plugin rewrites the filter, and conditions wrapped in `mongoose.trusted()` stay trusted.
+
 # Quick Guide
 #### Basic Usage
 ```js

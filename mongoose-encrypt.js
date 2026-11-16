@@ -3,6 +3,7 @@ const omit = require('lodash/omit');
 const mongoose = require('mongoose');
 const asyncHooks = require('async_hooks');
 const hashHelper = require('./helpers/hash');
+const { warnIfVulnerableMongoose } = require('./helpers/security');
 
 // Create AsyncLocalStorage for user context (role/permissions)
 const userContextStore = new asyncHooks.AsyncLocalStorage();
@@ -63,6 +64,26 @@ function decryptField(dataDecrypt, salt, algorithm) {
     const decryptData = hashHelper.decryptStr({ iv, hash }, salt, algorithm);
 
     return decryptData;
+}
+
+/**
+ * Build `{ [operator]: value }` and keep the markers of the source condition, such as the one
+ * added by `mongoose.trusted()`, so `sanitizeFilter` still trusts the rewritten condition.
+ * @param {*} source - the condition written by the caller
+ * @param {string} operator - the query operator
+ * @param {*} value - the operator value
+ * @returns {Object} the new condition
+ */
+function operatorCondition(source, operator, value) {
+    const condition = { [operator]: value };
+
+    if (source && typeof source === 'object') {
+        for (const symbol of Object.getOwnPropertySymbols(source)) {
+            condition[symbol] = source[symbol];
+        }
+    }
+
+    return condition;
 }
 
 /**
@@ -127,6 +148,9 @@ function defaultOptions(options) {
  */
 const MongooseEncryptPlugin = function (schema, options) {
     options = defaultOptions(options)
+
+    // Queries run through the application's Mongoose (schema.base), not a copy bundled with this package.
+    warnIfVulnerableMongoose(schema.base?.version || mongoose.version);
 
     async function updateRecord() {
         let that = this;
@@ -322,20 +346,14 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                         if (haveDataNotEncrypt) {
                             customAND.push({
-                                [field]: {
-                                    "$ne": tmpValue
-                                }
+                                [field]: operatorCondition(customQuery[field], '$ne', tmpValue)
                             });
 
                             customAND.push({
-                                [`${hashField}.${field}`]: {
-                                    "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                                }
+                                [`${hashField}.${field}`]: operatorCondition(customQuery[field], '$ne', crypto.createHash('sha256').update(tmpValue).digest('base64'))
                             });
                         } else {
-                            customQuery[`${hashField}.${field}`] = {
-                                "$ne": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                            };
+                            customQuery[`${hashField}.${field}`] = operatorCondition(customQuery[field], '$ne', crypto.createHash('sha256').update(tmpValue).digest('base64'));
                         }
 
                         delete (customQuery[field]);
@@ -344,20 +362,14 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                         if (haveDataNotEncrypt) {
                             customOR.push({
-                                [field]: {
-                                    "$eq": tmpValue
-                                }
+                                [field]: operatorCondition(customQuery[field], '$eq', tmpValue)
                             });
 
                             customOR.push({
-                                [`${hashField}.${field}`]: {
-                                    "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                                }
+                                [`${hashField}.${field}`]: operatorCondition(customQuery[field], '$eq', crypto.createHash('sha256').update(tmpValue).digest('base64'))
                             });
                         } else {
-                            customQuery[`${hashField}.${field}`] = {
-                                "$eq": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                            };
+                            customQuery[`${hashField}.${field}`] = operatorCondition(customQuery[field], '$eq', crypto.createHash('sha256').update(tmpValue).digest('base64'));
                         }
 
                         delete (customQuery[field]);
@@ -366,20 +378,14 @@ const MongooseEncryptPlugin = function (schema, options) {
 
                         if (haveDataNotEncrypt) {
                             customOR.push({
-                                [field]: {
-                                    "$exists": tmpValue
-                                }
+                                [field]: operatorCondition(customQuery[field], '$exists', tmpValue)
                             });
 
                             customOR.push({
-                                [`${hashField}.${field}`]: {
-                                    "$exists": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                                }
+                                [`${hashField}.${field}`]: operatorCondition(customQuery[field], '$exists', crypto.createHash('sha256').update(tmpValue).digest('base64'))
                             });
                         } else {
-                            customQuery[`${hashField}.${field}`] = {
-                                "$exists": crypto.createHash('sha256').update(tmpValue).digest('base64')
-                            };
+                            customQuery[`${hashField}.${field}`] = operatorCondition(customQuery[field], '$exists', crypto.createHash('sha256').update(tmpValue).digest('base64'));
                         }
 
                         delete (customQuery[field]);

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.11 - 2026-11-16
+
+### Security
+
+- The plugin emits a `SecurityWarning` (code `MONGOOSE_ENCRYPT_VULNERABLE_MONGOOSE`) once per process when it is applied to a schema of a Mongoose release with known vulnerabilities: 7.x before 7.8.13 and 8.x before 8.24.7 ([GHSA-8332-j7wj-wjw4](https://github.com/advisories/GHSA-8332-j7wj-wjw4), [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c), [GHSA-6972-9mcm-vhwj](https://github.com/advisories/GHSA-6972-9mcm-vhwj), [GHSA-wr5m-5jph-8m96](https://github.com/advisories/GHSA-wr5m-5jph-8m96)). The check reads the application's Mongoose (`schema.base`), because the vulnerable code is the application's copy, not one installed by this package. Upgrade Mongoose to 7.8.13 / 8.24.7 or later.
+- The development lockfile now uses Mongoose 8.24.9 (was 8.24.5). `npm audit --omit=dev` reports no vulnerabilities.
+
+### Fixed
+
+- `mongoose.trusted()` on an encrypted field (e.g. `{ email: mongoose.trusted({ $ne: value }) }`) is kept when the plugin rewrites the filter, so the query works with `sanitizeFilter: true`. Before, the rewritten condition lost the marker and matched nothing.
+
+### Changed
+
+- The `mongoose` dependency range is unchanged (`^7.0.0 || ^8.0.0`), so installs do not break.
+- README: Security section. CI runs the tests on Node.js 18/20/22 with Mongoose 7.8.13 and 8.24.9, plus `npm audit`.
+
 ## 1.1.10 - 2026-10-06
 
 ### Changed
