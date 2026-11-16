@@ -5,7 +5,7 @@ Version 2 targets **Mongoose 9** and Node.js >= 20.19. If you stay on Mongoose 7
 ## 1. Update the dependencies
 
 ```sh
-npm install mongoose@^9 mongoose-encrypt-plugin@^2
+npm install mongoose@^9.11.4 mongoose-encrypt-plugin@^2
 ```
 
 ## 2. Create two keys

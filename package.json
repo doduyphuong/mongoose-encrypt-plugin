@@ -1,6 +1,6 @@
 {
   "name": "mongoose-encrypt-plugin",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Mongoose plugin that encrypts fields with AES-256-GCM and keeps them searchable by equality (keyed blind index)",
   "main": "index.js",
   "types": "index.d.ts",
@@ -38,12 +38,12 @@
   "author": "Do Duy Phuong <doduyphuong433@gmail.com>",
   "license": "ISC",
   "peerDependencies": {
-    "mongoose": "^9.0.0"
+    "mongoose": "^9.11.4"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
     "mongodb-memory-server-core": "^10.4.3",
-    "mongoose": "^9.11.0",
+    "mongoose": "^9.12.1",
     "tsd": "^0.31.2"
   }
 }

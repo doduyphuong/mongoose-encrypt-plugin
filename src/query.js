@@ -16,6 +16,17 @@ function isOperatorObject(value) {
     return (proto === Object.prototype || proto === null) && keys.length > 0 && keys.every(k => k.startsWith('$'));
 }
 
+/** Copy the symbol markers of `source` (such as the one set by `mongoose.trusted()`) onto `target`. */
+function carryMarkers(source, target) {
+    if (source && typeof source === 'object' && target && typeof target === 'object') {
+        for (const symbol of Object.getOwnPropertySymbols(source)) {
+            target[symbol] = source[symbol];
+        }
+    }
+
+    return target;
+}
+
 /**
  * Build a function that rewrites a MongoDB filter so conditions on encrypted fields
  * target their search hash (`<hashField>.<field>`).
@@ -26,6 +37,10 @@ function isOperatorObject(value) {
  * - Anything else (`$regex`, RegExp, `$gt`, `$not`, ...) throws `UnsupportedOperatorError`.
  * - With `haveDataNotEncrypt`, each condition also matches the plaintext value, grouped in its own
  *   `$or` (or `$and` for `$ne` / `$nin`) so it is still ANDed with the rest of the filter.
+ * - `sanitizeFilter` keeps working: a condition wrapped in `mongoose.trusted()` stays trusted, and the
+ *   operators the plugin builds from a plain value or a lone `$eq` (which `sanitizeFilter` lets through)
+ *   are marked trusted, since they only hold hashes computed by the plugin. Any other operator sent by
+ *   a user is left untrusted, so `sanitizeFilter` still neutralises it.
  *
  * @param {Object} ctx
  * @param {string[]} ctx.fields - encrypted fields
@@ -33,8 +48,9 @@ function isOperatorObject(value) {
  * @param {boolean} ctx.haveDataNotEncrypt
  * @param {(value: *) => string[]} ctx.hashValues - every hash a stored value may have
  *   (the v2 HMAC, plus the v1 SHA-256 while data written by v1 is being migrated)
+ * @param {(obj: Object) => Object} [ctx.trusted] - marks an object as trusted (`mongoose.trusted`)
  */
-function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValues }) {
+function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValues, trusted = (obj) => obj }) {
     const hashesOf = (value) => (value === null || value === undefined ? [value] : hashValues(value));
 
     /** Rewrite one operator (or a plain value) of an encrypted field into a condition on its hash. */
@@ -88,22 +104,29 @@ function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValue
     function rewriteField(field, condition) {
         const hashPath = `${hashField}.${field}`;
         const parts = splitCondition(field, condition);
+        // `sanitizeFilter` lets a plain value or a lone `$eq` through as it is.
+        const passesSanitize = parts.length === 1 && (parts[0][0] === null || parts[0][0] === '$eq');
+        const hashed = (op, value) => {
+            const result = carryMarkers(condition, hashCondition(field, op, value));
+
+            return passesSanitize && result && typeof result === 'object' ? trusted(result) : result;
+        };
 
         if (!haveDataNotEncrypt) {
             // One clause per operator: two operators can map to the same one on the hash ($eq and $in -> $in).
-            return parts.map(([op, value]) => ({ [hashPath]: hashCondition(field, op, value) }));
+            return parts.map(([op, value]) => ({ [hashPath]: hashed(op, value) }));
         }
 
         return parts.map(([op, value]) => {
-            const hashed = hashCondition(field, op, value);
-            const raw = op === null ? value : { [op]: value };
+            const hashedCondition = hashed(op, value);
+            const raw = op === null ? value : carryMarkers(condition, { [op]: value });
 
             if (op === '$exists') {
                 // Encrypted and plaintext documents both store the field itself.
                 return { [field]: raw };
             }
 
-            const either = [{ [field]: raw }, { [hashPath]: hashed }];
+            const either = [{ [field]: raw }, { [hashPath]: hashedCondition }];
 
             return NEGATIVE_OPERATORS.includes(op) ? { $and: either } : { $or: either };
         });
@@ -150,4 +173,4 @@ function createFilterRewriter({ fields, hashField, haveDataNotEncrypt, hashValue
     return rewriteFilter;
 }
 
-module.exports = { createFilterRewriter, isOperatorObject, POSITIVE_OPERATORS, NEGATIVE_OPERATORS };
+module.exports = { createFilterRewriter, isOperatorObject, carryMarkers, POSITIVE_OPERATORS, NEGATIVE_OPERATORS };

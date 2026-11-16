@@ -12,10 +12,16 @@ Encrypt fields of a Mongoose schema with **AES-256-GCM** before they reach Mongo
 
 | Plugin version | Mongoose | Node.js |
 | --- | --- | --- |
-| 2.x | 9.x | >= 20.19 |
+| 2.x | 9.x (>= 9.11.4) | >= 20.19 |
 | 1.x | 7.x, 8.x | as required by your Mongoose version |
 
 Upgrading from 1.x? Read [UPGRADING.md](./UPGRADING.md).
+
+## Security
+
+Mongoose releases before **9.11.4** have known vulnerabilities ([GHSA-8332-j7wj-wjw4](https://github.com/advisories/GHSA-8332-j7wj-wjw4), [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c), [GHSA-6972-9mcm-vhwj](https://github.com/advisories/GHSA-6972-9mcm-vhwj), [GHSA-wr5m-5jph-8m96](https://github.com/advisories/GHSA-wr5m-5jph-8m96)), so the peer dependency requires `mongoose@^9.11.4`. If your package manager installs an older Mongoose anyway, the plugin emits a `SecurityWarning` (code `MONGOOSE_ENCRYPT_VULNERABLE_MONGOOSE`) once per process.
+
+Encrypted fields work with `sanitizeFilter`: operators sent by users are still neutralised after the plugin rewrites the filter, and conditions wrapped in `mongoose.trusted()` stay trusted.
 
 ## Install
 
@@ -31,15 +37,6 @@ Generate two different 32-byte keys once and keep them in your secret manager / 
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-## Compatibility
-
-| Plugin version | Mongoose | Node.js |
-| --- | --- | --- |
-| 1.x | 7.x, 8.x | as required by your Mongoose version |
-| 2.x (planned) | 9.x | >= 20.19 |
-
-# Quick Guide
-#### Basic Usage
 ```js
 const mongoose = require('mongoose');
 const { MongooseEncryptPlugin } = require('mongoose-encrypt-plugin');

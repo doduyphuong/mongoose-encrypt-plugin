@@ -1,6 +1,27 @@
 # Changelog
 
-## 2.0.0-beta.0 - Unreleased
+## 2.0.0-beta.1 - 2026-11-16
+
+### Security
+
+- The `mongoose` peer dependency is now `^9.11.4` (was `^9.0.0`). Mongoose 9.0.0 to 9.11.3 are affected by [GHSA-8332-j7wj-wjw4](https://github.com/advisories/GHSA-8332-j7wj-wjw4), [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c), [GHSA-6972-9mcm-vhwj](https://github.com/advisories/GHSA-6972-9mcm-vhwj) and [GHSA-wr5m-5jph-8m96](https://github.com/advisories/GHSA-wr5m-5jph-8m96).
+- The plugin emits a `SecurityWarning` (code `MONGOOSE_ENCRYPT_VULNERABLE_MONGOOSE`) once per process when it is applied to a schema of an affected Mongoose release, for package managers that do not enforce peer dependencies.
+- Development dependencies: Mongoose 9.12.1, `follow-redirects` 1.16.3 ([GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p), used by `mongodb-memory-server-core`). `npm audit` reports no vulnerabilities.
+
+### Fixed
+
+- `sanitizeFilter: true` broke searches on encrypted fields:
+  - with the `legacy` option, every equality search (`{ email }`, `{ email: { $eq } }`) matched nothing, because the plugin turns it into `$in` over the v2 and v1 hashes and `sanitizeFilter` neutralised that `$in`;
+  - conditions wrapped in `mongoose.trusted()` (`$ne`, `$in`, `$nin`, …) lost the trusted marker and matched nothing.
+  
+  The plugin now keeps `mongoose.trusted()` markers and marks as trusted the operators it builds from a plain value or a lone `$eq`. Operators sent by users are still neutralised.
+
+### Changed
+
+- README: Security section; removed a duplicated, outdated Compatibility table.
+- CI: `npm audit` job.
+
+## 2.0.0-beta.0 - 2026-10-08
 
 Version 2 targets **Mongoose 9** (Node.js >= 20.19). Mongoose 7/8 users stay on 1.x. See [UPGRADING.md](./UPGRADING.md).
 

@@ -6,6 +6,7 @@ const { OptionsError } = require('./errors');
 const { registerWriteHooks } = require('./hooks/write');
 const { registerReadHooks } = require('./hooks/read');
 const { registerMigration } = require('./migrate');
+const { warnIfVulnerableMongoose } = require('./security');
 
 /**
  * Encrypt fields of a schema with AES-256-GCM and keep them searchable by equality through a keyed hash.
@@ -41,6 +42,9 @@ const { registerMigration } = require('./migrate');
 function MongooseEncryptPlugin(schema, rawOptions) {
     const options = normalizeOptions(rawOptions);
 
+    // Queries run through the application's Mongoose (schema.base).
+    warnIfVulnerableMongoose(schema.base?.version || mongoose.version);
+
     options.fields.forEach(field => {
         const path = schema.path(field);
 
@@ -69,6 +73,7 @@ function MongooseEncryptPlugin(schema, rawOptions) {
         hashField: options.hashField,
         haveDataNotEncrypt: options.haveDataNotEncrypt,
         hashValues: codec.hashValues,
+        trusted: mongoose.trusted,
     });
     const ctx = { options, codec, rewriteFilter };
 
